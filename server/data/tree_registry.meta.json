@@ -1,0 +1,19 @@
+{
+  "rowCount": 93140,
+  "columns": [
+    "TreeID",
+    "Dist",
+    "Region",
+    "RegionRemark",
+    "TreeType",
+    "Diameter",
+    "TreeHeight",
+    "SurveyDate",
+    "TWD97X",
+    "TWD97Y",
+    "UpdDate"
+  ],
+  "sha256": "83d2d99c6596fefae13b43132f8f16747e79836935b03fbe2cb3ff43efa6ef80",
+  "fetchedAt": "2026-04-17T17:18:24.031Z",
+  "sourceUrl": "https://drive.google.com/uc?export=download&id=1ontxB8mgs0BHoW0ha5mJ5DWpGedQsz3O"
+}

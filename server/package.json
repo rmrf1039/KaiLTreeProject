@@ -1,0 +1,23 @@
+{
+  "name": "@kai/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@kai/shared": "*",
+    "express": "^4.21.1",
+    "papaparse": "^5.4.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.9.0",
+    "@types/papaparse": "^5.3.15",
+    "@types/ws": "^8.5.13",
+    "vite": "^5.4.10"
+  }
+}

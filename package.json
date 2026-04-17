@@ -1,0 +1,21 @@
+{
+  "name": "kaiproject",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "tsx watch --clear-screen=false --include='server/src/**' --include='shared/src/**' --ignore='client/**' --ignore='cache/**' --ignore='node_modules/**' server/src/index.ts",
+    "build": "npm -w @kai/client run build && npm -w @kai/server run build",
+    "start": "NODE_ENV=production node server/dist/index.js",
+    "refresh-registry": "tsx scripts/refresh-registry.ts",
+    "typecheck": "tsc -p server/tsconfig.json --noEmit && tsc -p client/tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}
