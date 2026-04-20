@@ -17,10 +17,12 @@ export class Scene {
   private leaves: Float32Array | null;
   private atlas: ImageBitmap | null;
   private rects: Float32Array | null;
+  private segAtlas: ImageBitmap | null;
+  private segRects: Float32Array | null;
+  private segVariantsTotal: number;
   private segmentCount: number;
   private leafCount: number;
   private bounds: { minX: number; maxX: number; minY: number; maxY: number };
-  private trunkColor: string;
   private rafHandle: number | null = null;
   private startMs = 0;
   private disposed = false;
@@ -38,15 +40,13 @@ export class Scene {
     this.leaves = data.leaves;
     this.atlas = data.atlas;
     this.rects = data.rects;
+    this.segAtlas = data.segAtlas;
+    this.segRects = data.segRects;
+    this.segVariantsTotal = data.segVariantsTotal;
     this.segmentCount = data.segmentCount;
     this.leafCount = data.leafCount;
     this.leafCap = data.leafCount;
     this.bounds = data.bounds;
-    const a = data.trunkColorARGB;
-    const r = (a >>> 16) & 0xff;
-    const g = (a >>> 8) & 0xff;
-    const b = a & 0xff;
-    this.trunkColor = `rgb(${r},${g},${b})`;
   }
 
   start(): void {
@@ -82,51 +82,94 @@ export class Scene {
   };
 
   private draw(t: number, now: number): void {
-    const { ctx, canvas, segments, leaves, atlas, rects } = this;
-    if (!segments || !leaves || !atlas || !rects) return;
+    const { ctx, canvas, segments, leaves, atlas, rects, segAtlas, segRects } = this;
+    if (!segments || !leaves || !atlas || !rects || !segAtlas || !segRects) return;
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     const padding = 60;
     const treeW = Math.max(1, this.bounds.maxX - this.bounds.minX);
     const treeH = Math.max(1, this.bounds.maxY - this.bounds.minY);
+    // Cap height to 78% of canvas so tiles stay large enough to read
+    const maxH = canvas.height * 0.78;
     const scale =
-      Math.min((canvas.width - 2 * padding) / treeW, (canvas.height - 2 * padding) / treeH) * 0.85;
+      Math.min((canvas.width - 2 * padding) / treeW, maxH / treeH);
     const cx = canvas.width / 2;
-    const cy = canvas.height * 0.92;
+    const cy = canvas.height * 0.90;
 
     ctx.save();
     ctx.translate(cx, cy);
     ctx.scale(scale, scale);
 
     const windPhase = now * 0.0006;
-
-    ctx.strokeStyle = this.trunkColor;
-    ctx.lineCap = 'round';
+    const segVariantsTotal = Math.max(1, this.segVariantsTotal);
 
     const segCount = this.segmentCount;
-    for (let i = 0; i < segCount; i++) {
-      const o = i * SEG_STRIDE;
-      const segT = segments[o + 5]!;
-      if (segT > t) break;
-      const x0 = segments[o]!;
-      const y0 = segments[o + 1]!;
-      const x1 = segments[o + 2]!;
-      const y1 = segments[o + 3]!;
-      const depth = segments[o + 4]!;
-      const sway = Math.sin(windPhase + depth * 0.35) * depth * 0.6;
 
-      const widthScreen = Math.max(0.8, 7 - depth * 1.0);
-      ctx.lineWidth = widthScreen / scale;
-      ctx.beginPath();
-      ctx.moveTo(x0 + sway * 0.2, y0);
-      ctx.lineTo(x1 + sway, y1);
-      ctx.stroke();
+    // Find max depth so we can draw parents first, children on top
+    let maxDepth = 0;
+    for (let i = 0; i < segCount; i++) {
+      const d = segments[i * SEG_STRIDE + 4]!;
+      if (d > maxDepth) maxDepth = d;
     }
 
+    // Fan-layered draw order: shallow depths first (parent under child),
+    // and within each depth, side 0 (left) → 1 (middle) → 2 (right) so
+    // the right child ends up on top of middle, middle on top of left,
+    // and all siblings sit on top of their parent.
+    for (let d = 0; d <= maxDepth; d++) {
+      for (let s = 0; s <= 2; s++) {
+        for (let i = 0; i < segCount; i++) {
+          const o = i * SEG_STRIDE;
+          const segT = segments[o + 5]!;
+          if (segT > t) break;
+          const depth = segments[o + 4]!;
+          const segSide = segments[o + 6]!;
+          if (depth !== d || segSide !== s) continue;
+
+          const x0 = segments[o]!;
+          const y0 = segments[o + 1]!;
+          const x1 = segments[o + 2]!;
+          const y1 = segments[o + 3]!;
+
+          const mx = (x0 + x1) / 2;
+          const my = (y0 + y1) / 2;
+          const segLen = Math.hypot(x1 - x0, y1 - y0);
+          // Rectangular tile: long edge matches the branch length (edges of
+          // adjacent tiles meet exactly, no overflow past endpoints); short
+          // edge is narrower so branches don't bleed sideways into neighbors.
+          const tileH = segLen * 1.02;   // +2% hides sub-pixel gaps, no visible overflow
+          const tileW = segLen * 0.48;   // narrow enough that sibling branches don't collide at the junction
+
+          // Rotate so photo's "up" aligns with the branch's forward direction.
+          // Trunk (up): 0 rotation; 45° branch: 45° tilt — mirrors the tree's structure.
+          const photoRot = Math.atan2(y1 - y0, x1 - x0) + Math.PI / 2;
+
+          const sway = Math.sin(windPhase + depth * 0.35) * depth * 0.12;
+
+          const atlasIdx = i % segVariantsTotal;
+          const ri = atlasIdx * RECT_STRIDE;
+          const sx = segRects[ri]!;
+          const sy = segRects[ri + 1]!;
+          const sw = segRects[ri + 2]!;
+          const sh = segRects[ri + 3]!;
+
+          ctx.globalAlpha = Math.max(0.75, 1 - depth * 0.03);
+          ctx.save();
+          ctx.translate(mx + sway, my);
+          ctx.rotate(photoRot);
+          // After rotate: local Y is along branch, local X is perpendicular
+          ctx.drawImage(segAtlas, sx, sy, sw, sh, -tileW / 2, -tileH / 2, tileW, tileH);
+          ctx.restore();
+        }
+      }
+    }
+
+    ctx.globalAlpha = 1;
+
     const leafCount = Math.min(this.leafCount, this.leafCap);
-    const leafSizeScreen = 38;
-    const leafSize = leafSizeScreen / scale;
+    const leafSizeScreen = 52;
+    const leafH = leafSizeScreen / scale;
     for (let i = 0; i < leafCount; i++) {
       const o = i * LEAF_STRIDE;
       const appT = leaves[o + 5]!;
@@ -135,19 +178,20 @@ export class Scene {
       const y = leaves[o + 1]!;
       const angle = leaves[o + 2]!;
       const s = leaves[o + 3]!;
-      const atlasIdx = leaves[o + 4]! | 0;
-      const r = atlasIdx * RECT_STRIDE;
-      const sx = rects[r]!;
-      const sy = rects[r + 1]!;
-      const sw = rects[r + 2]!;
-      const sh = rects[r + 3]!;
-      const sway = Math.sin(windPhase * 1.3 + atlasIdx * 0.25) * 0.08;
+      const atlasIdx = (leaves[o + 4]! | 0) % segVariantsTotal;
+      const ri = atlasIdx * RECT_STRIDE;
+      const sx = segRects[ri]!;
+      const sy = segRects[ri + 1]!;
+      const sw = segRects[ri + 2]!;
+      const sh = segRects[ri + 3]!;
+      const sway = Math.sin(windPhase * 1.3 + atlasIdx * 0.25) * 0.03;
+      const lh = leafH * s;
+      const lw = lh * 0.75;
 
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(angle + sway);
-      const size = leafSize * s;
-      ctx.drawImage(atlas, sx, sy, sw, sh, -size / 2, -size / 2, size, size);
+      ctx.drawImage(segAtlas, sx, sy, sw, sh, -lh / 2, -lw / 2, lh, lw);
       ctx.restore();
     }
 
@@ -159,14 +203,13 @@ export class Scene {
     this.disposed = true;
     if (this.rafHandle !== null) cancelAnimationFrame(this.rafHandle);
     this.rafHandle = null;
-    try {
-      this.atlas?.close();
-    } catch {
-      /* bitmap already closed */
-    }
+    try { this.atlas?.close(); } catch { /* already closed */ }
+    try { this.segAtlas?.close(); } catch { /* already closed */ }
     this.atlas = null;
+    this.segAtlas = null;
     this.segments = null;
     this.leaves = null;
     this.rects = null;
+    this.segRects = null;
   }
 }

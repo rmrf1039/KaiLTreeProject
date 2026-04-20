@@ -7,6 +7,12 @@ export type AtlasResult = {
   trunkColorARGB: number;
 };
 
+export type SegAtlasResult = {
+  atlas: ImageBitmap;
+  rects: Float32Array;
+  totalVariants: number;
+};
+
 export async function buildAtlas(
   sources: ImageBitmap[],
   variantsPerSlot: number,
@@ -93,4 +99,51 @@ export async function buildAtlas(
 
   const atlas = canvas.transferToImageBitmap();
   return { atlas, rects, trunkColorARGB };
+}
+
+export async function buildSegAtlas(
+  sources: ImageBitmap[],
+  variantsPerSlot: number,
+  atlasSize: number,
+  seed: number,
+): Promise<SegAtlasResult> {
+  const canvas = new OffscreenCanvas(atlasSize, atlasSize);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('OffscreenCanvas 2d context unavailable');
+
+  const totalVariants = sources.length * variantsPerSlot;
+  const cols = Math.ceil(Math.sqrt(totalVariants));
+  const cell = Math.floor(atlasSize / cols);
+  const rects = new Float32Array(totalVariants * RECT_STRIDE);
+  const rng = new Xorshift32(seed ^ 0xdeadbeef);
+
+  ctx.clearRect(0, 0, atlasSize, atlasSize);
+
+  for (let s = 0; s < sources.length; s++) {
+    const src = sources[s]!;
+    for (let v = 0; v < variantsPerSlot; v++) {
+      const idx = s * variantsPerSlot + v;
+      const col = idx % cols;
+      const row = Math.floor(idx / cols);
+      const dx = col * cell;
+      const dy = row * cell;
+
+      const cropScale = 0.55 + rng.next() * 0.35;
+      const cropW = Math.floor(src.width * cropScale);
+      const cropH = Math.floor(src.height * cropScale);
+      const cropX = rng.int(Math.max(1, src.width - cropW));
+      const cropY = rng.int(Math.max(1, src.height - cropH));
+
+      ctx.drawImage(src, cropX, cropY, cropW, cropH, dx, dy, cell, cell);
+
+      const o = idx * RECT_STRIDE;
+      rects[o] = dx;
+      rects[o + 1] = dy;
+      rects[o + 2] = cell;
+      rects[o + 3] = cell;
+    }
+  }
+
+  const atlas = canvas.transferToImageBitmap();
+  return { atlas, rects, totalVariants };
 }

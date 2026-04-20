@@ -1,4 +1,4 @@
-import { buildAtlas } from './atlas';
+import { buildAtlas, buildSegAtlas } from './atlas';
 import { expand } from './grammar';
 import { walk } from './turtle';
 
@@ -30,6 +30,9 @@ export type BuildResult = {
   trunkColorARGB: number;
   atlasSlots: number;
   variantsPerSlot: number;
+  segAtlas: ImageBitmap;
+  segRects: Float32Array;
+  segVariantsTotal: number;
 };
 
 self.addEventListener('message', async (event: MessageEvent<BuildMsg>) => {
@@ -47,7 +50,11 @@ self.addEventListener('message', async (event: MessageEvent<BuildMsg>) => {
       atlasSlots,
       variantsPerSlot: msg.variantsPerSlot,
     });
-    const atlasResult = await buildAtlas(msg.images, msg.variantsPerSlot, msg.atlasSize, msg.seed);
+    const SEG_VARIANTS_PER_SLOT = 3;
+    const [atlasResult, segAtlasResult] = await Promise.all([
+      buildAtlas(msg.images, msg.variantsPerSlot, msg.atlasSize, msg.seed),
+      buildSegAtlas(msg.images, SEG_VARIANTS_PER_SLOT, 1024, msg.seed),
+    ]);
 
     const result: BuildResult = {
       type: 'build-result',
@@ -63,6 +70,9 @@ self.addEventListener('message', async (event: MessageEvent<BuildMsg>) => {
       trunkColorARGB: atlasResult.trunkColorARGB,
       atlasSlots,
       variantsPerSlot: msg.variantsPerSlot,
+      segAtlas: segAtlasResult.atlas,
+      segRects: segAtlasResult.rects,
+      segVariantsTotal: segAtlasResult.totalVariants,
     };
 
     (self as unknown as Worker).postMessage(result, [
@@ -70,6 +80,8 @@ self.addEventListener('message', async (event: MessageEvent<BuildMsg>) => {
       result.leaves.buffer,
       result.atlas,
       result.rects.buffer,
+      result.segAtlas,
+      result.segRects.buffer,
     ]);
   } catch (err) {
     (self as unknown as Worker).postMessage({ type: 'build-error', message: (err as Error).message });

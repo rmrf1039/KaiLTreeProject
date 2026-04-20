@@ -32,11 +32,14 @@ export function walk(expanded: string, seed: number, params: WalkParams): Geomet
   let ang = -Math.PI / 2;
   let len = params.initialLen;
   let depth = 0;
+  // 0 = left branch, 1 = middle/trunk, 2 = right branch.
+  // Determines fan-layered z-order at each branching point.
+  let side = 1;
 
   const angleStep = (params.angleDeg * Math.PI) / 180;
   const jitter = (params.jitterDeg * Math.PI) / 180;
 
-  type StackFrame = [x: number, y: number, ang: number, len: number, depth: number];
+  type StackFrame = [x: number, y: number, ang: number, len: number, depth: number, side: number];
   const stack: StackFrame[] = [];
 
   let minX = 0, maxX = 0, minY = 0, maxY = 0;
@@ -54,6 +57,7 @@ export function walk(expanded: string, seed: number, params: WalkParams): Geomet
         segments[o + 3] = y1;
         segments[o + 4] = depth;
         segments[o + 5] = segCount;
+        segments[o + 6] = side;
         segCount++;
       }
       x = x1;
@@ -67,13 +71,16 @@ export function walk(expanded: string, seed: number, params: WalkParams): Geomet
     } else if (c === '-') {
       ang += angleStep + (rng.next() - 0.5) * jitter;
     } else if (c === '[') {
+      // Peek at the next rotation char to decide which "side" this new
+      // branch represents — drives the fan z-order in the renderer.
+      const next = expanded[i + 1];
+      const nextSide = next === '+' ? 0 : next === '-' ? 2 : 1;
+      stack.push([x, y, ang, len, depth, side]);
       if (depth < CAPS.maxDepth) {
-        stack.push([x, y, ang, len, depth]);
         len *= params.lenDecay;
         depth++;
-      } else {
-        stack.push([x, y, ang, len, depth]);
       }
+      side = nextSide;
     } else if (c === ']') {
       const f = stack.pop();
       if (f) {
@@ -82,6 +89,7 @@ export function walk(expanded: string, seed: number, params: WalkParams): Geomet
         ang = f[2];
         len = f[3];
         depth = f[4];
+        side = f[5];
       }
     } else if (c === 'X') {
       if (leafCount < CAPS.maxLeaves) {

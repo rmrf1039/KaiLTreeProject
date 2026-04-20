@@ -6,7 +6,7 @@ export type TreeRecord = {
   proxyUrl: string;
 };
 
-export const SEG_STRIDE = 6;
+export const SEG_STRIDE = 7;
 export const LEAF_STRIDE = 6;
 export const RECT_STRIDE = 4;
 

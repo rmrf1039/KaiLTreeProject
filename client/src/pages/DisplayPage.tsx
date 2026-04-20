@@ -123,7 +123,7 @@ export function DisplayPage() {
         images: bitmaps,
         atlasSize: ATLAS_SIZE,
         variantsPerSlot: VARIANTS_PER_SLOT,
-        params: { initialLen: 10, lenDecay: 0.72, angleDeg: 24, jitterDeg: 6 },
+        params: { initialLen: 10, lenDecay: 0.78, angleDeg: 45, jitterDeg: 5 },
       };
 
       const result = await new Promise<BuildResult>((resolve, reject) => {
@@ -148,6 +148,7 @@ export function DisplayPage() {
       if (!result) return;
       if (currentSearchIdRef.current !== msg.searchId) {
         result.atlas.close();
+        result.segAtlas.close();
         return;
       }
 
