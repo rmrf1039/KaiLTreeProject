@@ -33,6 +33,11 @@ export type BuildResult = {
   segAtlas: ImageBitmap;
   segRects: Float32Array;
   segVariantsTotal: number;
+  branchParents: Uint16Array;
+  branchOriginX: Float32Array;
+  branchOriginY: Float32Array;
+  branchDepth: Uint8Array;
+  branchCount: number;
 };
 
 self.addEventListener('message', async (event: MessageEvent<BuildMsg>) => {
@@ -73,6 +78,11 @@ self.addEventListener('message', async (event: MessageEvent<BuildMsg>) => {
       segAtlas: segAtlasResult.atlas,
       segRects: segAtlasResult.rects,
       segVariantsTotal: segAtlasResult.totalVariants,
+      branchParents: geometry.branchParents,
+      branchOriginX: geometry.branchOriginX,
+      branchOriginY: geometry.branchOriginY,
+      branchDepth: geometry.branchDepth,
+      branchCount: geometry.branchCount,
     };
 
     (self as unknown as Worker).postMessage(result, [
@@ -82,6 +92,10 @@ self.addEventListener('message', async (event: MessageEvent<BuildMsg>) => {
       result.rects.buffer,
       result.segAtlas,
       result.segRects.buffer,
+      result.branchParents.buffer,
+      result.branchOriginX.buffer,
+      result.branchOriginY.buffer,
+      result.branchDepth.buffer,
     ]);
   } catch (err) {
     (self as unknown as Worker).postMessage({ type: 'build-error', message: (err as Error).message });

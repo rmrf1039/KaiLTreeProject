@@ -8,6 +8,14 @@ export type Geometry = {
   leaves: Float32Array;
   leafCount: number;
   bounds: { minX: number; maxX: number; minY: number; maxY: number };
+  // Per-branch hierarchy for skeletal animation:
+  //  - branchParents[b] = parent branch id (root's parent is itself = 0)
+  //  - branchOriginX/Y[b] = world position where branch `b` attaches to parent
+  branchParents: Uint16Array;
+  branchOriginX: Float32Array;
+  branchOriginY: Float32Array;
+  branchDepth: Uint8Array;
+  branchCount: number;
 };
 
 export type WalkParams = {
@@ -40,6 +48,14 @@ export function walk(expanded: string, seed: number, params: WalkParams): Geomet
   // diverse limb widths (some thin, some chunky) rather than uniform ribs.
   let widthFactor = 1;
 
+  // Branch hierarchy (skeletal): root is branch 0 with no parent.
+  let branchId = 0;
+  let nextBranchId = 1;
+  const branchParentsList: number[] = [0];
+  const branchOriginXList: number[] = [0];
+  const branchOriginYList: number[] = [0];
+  const branchDepthList: number[] = [0];
+
   const angleStep = (params.angleDeg * Math.PI) / 180;
   const jitter = (params.jitterDeg * Math.PI) / 180;
 
@@ -51,6 +67,7 @@ export function walk(expanded: string, seed: number, params: WalkParams): Geomet
     depth: number,
     side: number,
     widthFactor: number,
+    branchId: number,
   ];
   const stack: StackFrame[] = [];
 
@@ -76,6 +93,8 @@ export function walk(expanded: string, seed: number, params: WalkParams): Geomet
         segments[o + 7] = rng.next();
         // Branch-level width factor (always <= parent's, see `[` handler).
         segments[o + 8] = widthFactor;
+        // Branch id — drives skeletal per-branch sway in the renderer.
+        segments[o + 9] = branchId;
         segCount++;
       }
       x = x1;
@@ -93,7 +112,8 @@ export function walk(expanded: string, seed: number, params: WalkParams): Geomet
       // branch represents — drives the fan z-order in the renderer.
       const next = expanded[i + 1];
       const nextSide = next === '+' ? 0 : next === '-' ? 2 : 1;
-      stack.push([x, y, ang, len, depth, side, widthFactor]);
+      const parentBranch = branchId;
+      stack.push([x, y, ang, len, depth, side, widthFactor, parentBranch]);
       if (depth < CAPS.maxDepth) {
         len *= params.lenDecay;
         depth++;
@@ -103,6 +123,13 @@ export function walk(expanded: string, seed: number, params: WalkParams): Geomet
       // guarantees a child is never wider than its parent, while still
       // letting siblings differ slightly so the tree looks diverse.
       widthFactor *= 0.88 + rng.next() * 0.12;
+      // Register the new child branch: its origin is the current turtle
+      // position (where the `[` sits), parent is the branch we're leaving.
+      branchId = nextBranchId++;
+      branchParentsList.push(parentBranch);
+      branchOriginXList.push(x);
+      branchOriginYList.push(y);
+      branchDepthList.push(depth);
     } else if (c === ']') {
       const f = stack.pop();
       if (f) {
@@ -113,6 +140,7 @@ export function walk(expanded: string, seed: number, params: WalkParams): Geomet
         depth = f[4];
         side = f[5];
         widthFactor = f[6];
+        branchId = f[7];
       }
       // After fully closing a branching group (next char is not another
       // sibling branch `[`), shorten the trunk segment length so each
@@ -134,6 +162,7 @@ export function walk(expanded: string, seed: number, params: WalkParams): Geomet
         leaves[o + 3] = 0.75 + rng.next() * 0.5;
         leaves[o + 4] = atlasIdx;
         leaves[o + 5] = segCount;
+        leaves[o + 6] = branchId;
         leafCount++;
       }
     }
@@ -154,5 +183,10 @@ export function walk(expanded: string, seed: number, params: WalkParams): Geomet
     leaves,
     leafCount,
     bounds: { minX, maxX, minY, maxY },
+    branchParents: new Uint16Array(branchParentsList),
+    branchOriginX: new Float32Array(branchOriginXList),
+    branchOriginY: new Float32Array(branchOriginYList),
+    branchDepth: new Uint8Array(branchDepthList),
+    branchCount: nextBranchId,
   };
 }
