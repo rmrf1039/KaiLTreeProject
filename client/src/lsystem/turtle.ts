@@ -91,6 +91,14 @@ export function walk(expanded: string, seed: number, params: WalkParams): Geomet
         depth = f[4];
         side = f[5];
       }
+      // After fully closing a branching group (next char is not another
+      // sibling branch `[`), shorten the trunk segment length so each
+      // successive splitting point on the trunk sits closer to the last —
+      // lower branches get more breathing room than upper ones.
+      // Mild factor so upper branches don't cascade into invisibly-small tiles.
+      if (expanded[i + 1] !== '[') {
+        len *= 0.92;
+      }
     } else if (c === 'X') {
       if (leafCount < CAPS.maxLeaves) {
         const o = leafCount * LEAF_STRIDE;
