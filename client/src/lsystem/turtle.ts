@@ -58,6 +58,10 @@ export function walk(expanded: string, seed: number, params: WalkParams): Geomet
         segments[o + 4] = depth;
         segments[o + 5] = segCount;
         segments[o + 6] = side;
+        // Per-segment seed-derived jitter (0..1). The renderer turns this
+        // into small, deterministic rotation/scale wobble so each seed
+        // produces a visually unique tree rather than identical tiling.
+        segments[o + 7] = rng.next();
         segCount++;
       }
       x = x1;

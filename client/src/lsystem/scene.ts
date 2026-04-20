@@ -135,15 +135,24 @@ export class Scene {
           const mx = (x0 + x1) / 2;
           const my = (y0 + y1) / 2;
           const segLen = Math.hypot(x1 - x0, y1 - y0);
+
+          // Per-segment, seed-derived jitter (0..1) → signed wobble in [-0.5, 0.5].
+          // Makes every seed produce a visually distinct tree rather than
+          // identical tiling across trees with similar structure.
+          const jit = (segments[o + 7]! - 0.5);
+
           // Rectangular tile: long edge matches the branch length (edges of
           // adjacent tiles meet exactly, no overflow past endpoints); short
           // edge is narrower so branches don't bleed sideways into neighbors.
-          const tileH = segLen * 1.02;   // +2% hides sub-pixel gaps, no visible overflow
-          const tileW = segLen * 0.48;   // narrow enough that sibling branches don't collide at the junction
+          // Small seed-driven scale wobble (±4%) adds organic variety.
+          const scaleWobble = 1 + jit * 0.08;
+          const tileH = segLen * 1.02 * scaleWobble;
+          const tileW = segLen * 0.48 * scaleWobble;
 
-          // Rotate so photo's "up" aligns with the branch's forward direction.
-          // Trunk (up): 0 rotation; 45° branch: 45° tilt — mirrors the tree's structure.
-          const photoRot = Math.atan2(y1 - y0, x1 - x0) + Math.PI / 2;
+          // Rotate so photo's "up" aligns with the branch's forward direction,
+          // plus a small seed-driven rotation jitter (~±5°) so each tile sits
+          // at a slightly different tilt — unique per seed, stable per tile.
+          const photoRot = Math.atan2(y1 - y0, x1 - x0) + Math.PI / 2 + jit * 0.18;
 
           const sway = Math.sin(windPhase + depth * 0.35) * depth * 0.12;
 
