@@ -163,7 +163,15 @@ export class Scene {
           const sw = segRects[ri + 2]!;
           const sh = segRects[ri + 3]!;
 
-          ctx.globalAlpha = Math.max(0.75, 1 - depth * 0.03);
+          // 3D depth via opacity:
+          //  - Deeper branches fade more, as if receding into atmosphere.
+          //  - Fan-back (left) sits further from viewer than fan-front
+          //    (right), so shift alpha by side to reinforce the layering.
+          //  - Clamp so the deepest tiles stay readable, not invisible.
+          const depthFade = Math.max(0.5, 1 - depth * 0.11);
+          const sideShift = s === 0 ? -0.12 : s === 2 ? 0.02 : -0.05;
+          ctx.globalAlpha = Math.max(0.35, Math.min(1, depthFade + sideShift));
+
           ctx.save();
           ctx.translate(mx + sway, my);
           ctx.rotate(photoRot);
