@@ -35,11 +35,23 @@ export function walk(expanded: string, seed: number, params: WalkParams): Geomet
   // 0 = left branch, 1 = middle/trunk, 2 = right branch.
   // Determines fan-layered z-order at each branching point.
   let side = 1;
+  // Per-branch tile width multiplier — constant within a branch, randomised
+  // when entering a new `[`, restored when leaving. Gives the tree visually
+  // diverse limb widths (some thin, some chunky) rather than uniform ribs.
+  let widthFactor = 1;
 
   const angleStep = (params.angleDeg * Math.PI) / 180;
   const jitter = (params.jitterDeg * Math.PI) / 180;
 
-  type StackFrame = [x: number, y: number, ang: number, len: number, depth: number, side: number];
+  type StackFrame = [
+    x: number,
+    y: number,
+    ang: number,
+    len: number,
+    depth: number,
+    side: number,
+    widthFactor: number,
+  ];
   const stack: StackFrame[] = [];
 
   let minX = 0, maxX = 0, minY = 0, maxY = 0;
@@ -62,6 +74,8 @@ export function walk(expanded: string, seed: number, params: WalkParams): Geomet
         // into small, deterministic rotation/scale wobble so each seed
         // produces a visually unique tree rather than identical tiling.
         segments[o + 7] = rng.next();
+        // Branch-level width factor (always <= parent's, see `[` handler).
+        segments[o + 8] = widthFactor;
         segCount++;
       }
       x = x1;
@@ -79,12 +93,16 @@ export function walk(expanded: string, seed: number, params: WalkParams): Geomet
       // branch represents — drives the fan z-order in the renderer.
       const next = expanded[i + 1];
       const nextSide = next === '+' ? 0 : next === '-' ? 2 : 1;
-      stack.push([x, y, ang, len, depth, side]);
+      stack.push([x, y, ang, len, depth, side, widthFactor]);
       if (depth < CAPS.maxDepth) {
         len *= params.lenDecay;
         depth++;
       }
       side = nextSide;
+      // Child branch gets a width factor in [0.88, 1.0] of the parent —
+      // guarantees a child is never wider than its parent, while still
+      // letting siblings differ slightly so the tree looks diverse.
+      widthFactor *= 0.88 + rng.next() * 0.12;
     } else if (c === ']') {
       const f = stack.pop();
       if (f) {
@@ -94,6 +112,7 @@ export function walk(expanded: string, seed: number, params: WalkParams): Geomet
         len = f[3];
         depth = f[4];
         side = f[5];
+        widthFactor = f[6];
       }
       // After fully closing a branching group (next char is not another
       // sibling branch `[`), shorten the trunk segment length so each

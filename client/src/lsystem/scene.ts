@@ -141,13 +141,18 @@ export class Scene {
           // identical tiling across trees with similar structure.
           const jit = (segments[o + 7]! - 0.5);
 
+          // Per-branch width factor (<= 1, monotonically non-increasing with
+          // depth). Keeps the physics right — a child is never wider than
+          // its parent — while letting sibling branches have diverse widths.
+          const branchWidth = segments[o + 8]!;
+
           // Rectangular tile: long edge matches the branch length (edges of
           // adjacent tiles meet exactly, no overflow past endpoints); short
           // edge is narrower so branches don't bleed sideways into neighbors.
           // Small seed-driven scale wobble (±4%) adds organic variety.
           const scaleWobble = 1 + jit * 0.08;
           const tileH = segLen * 1.02 * scaleWobble;
-          const tileW = segLen * 0.48 * scaleWobble;
+          const tileW = segLen * 0.48 * scaleWobble * branchWidth;
 
           // Rotate so photo's "up" aligns with the branch's forward direction,
           // plus a small seed-driven rotation jitter (~±5°) so each tile sits
