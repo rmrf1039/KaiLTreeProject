@@ -15,11 +15,15 @@ type InputState =
 const SEARCH_CANDIDATES = 161;
 
 export function InputPage() {
-  const [code, setCode] = useState('');
+  const [digits, setDigits] = useState<string[]>(['', '', '', '']);
   const [state, setState] = useState<InputState>({ kind: 'idle' });
   const [presence, setPresence] = useState({ inputs: 0, displays: 0 });
   const { connState, subscribe } = useWebSocket('input');
   const doneTimerRef = useRef<number | undefined>(undefined);
+  const inputRefs = useRef<Array<HTMLInputElement | null>>([null, null, null, null]);
+
+  const code = digits.join('');
+  const isLocked = state.kind === 'submitting' || state.kind === 'searching';
 
   useEffect(() => {
     return subscribe((msg: WSMessage) => {
@@ -74,6 +78,8 @@ export function InputPage() {
       if (doneTimerRef.current !== undefined) clearTimeout(doneTimerRef.current);
       doneTimerRef.current = window.setTimeout(() => {
         setState({ kind: 'idle' });
+        setDigits(['', '', '', '']);
+        inputRefs.current[0]?.focus();
       }, 2500);
     }
     return () => {
@@ -81,20 +87,19 @@ export function InputPage() {
     };
   }, [state.kind]);
 
-  const canSubmit =
-    /^\d{4}$/.test(code) &&
-    (state.kind === 'idle' || state.kind === 'done' || state.kind === 'error');
+  function canSubmitCode(c: string): boolean {
+    return /^\d{4}$/.test(c) && (state.kind === 'idle' || state.kind === 'done' || state.kind === 'error');
+  }
 
-  async function handleSubmit(e: React.FormEvent): Promise<void> {
-    e.preventDefault();
-    if (!canSubmit) return;
-    setState({ kind: 'submitting', code });
+  async function submit(c: string): Promise<void> {
+    if (!canSubmitCode(c)) return;
+    setState({ kind: 'submitting', code: c });
     const idempotencyKey = crypto.randomUUID();
     try {
       const r = await fetch('/api/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, idempotencyKey }),
+        body: JSON.stringify({ code: c, idempotencyKey }),
       });
       if (!r.ok) {
         const err = (await r.json().catch(() => ({ error: 'submit-failed' }))) as { error?: string };
@@ -105,40 +110,91 @@ export function InputPage() {
     }
   }
 
+  function updateDigit(index: number, value: string): void {
+    const cleaned = value.replace(/\D/g, '');
+    if (cleaned.length > 1) {
+      // Paste: spread across boxes starting at index
+      const next = [...digits];
+      for (let i = 0; i < cleaned.length && index + i < 4; i++) {
+        next[index + i] = cleaned[i]!;
+      }
+      setDigits(next);
+      const focusIdx = Math.min(index + cleaned.length, 3);
+      inputRefs.current[focusIdx]?.focus();
+      if (next.every((d) => d !== '')) void submit(next.join(''));
+      return;
+    }
+    const next = [...digits];
+    next[index] = cleaned;
+    setDigits(next);
+    if (cleaned && index < 3) {
+      inputRefs.current[index + 1]?.focus();
+    }
+    if (next.every((d) => d !== '')) void submit(next.join(''));
+  }
+
+  function handleKeyDown(index: number, e: React.KeyboardEvent<HTMLInputElement>): void {
+    if (e.key === 'Backspace') {
+      if (digits[index] === '' && index > 0) {
+        e.preventDefault();
+        const next = [...digits];
+        next[index - 1] = '';
+        setDigits(next);
+        inputRefs.current[index - 1]?.focus();
+      }
+    } else if (e.key === 'ArrowLeft' && index > 0) {
+      e.preventDefault();
+      inputRefs.current[index - 1]?.focus();
+    } else if (e.key === 'ArrowRight' && index < 3) {
+      e.preventDefault();
+      inputRefs.current[index + 1]?.focus();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (canSubmitCode(code)) void submit(code);
+    }
+  }
+
   return (
     <main className="input">
-      <header className="input-header">
-        <h1>Taipei Street-Tree L-System</h1>
-        <div className="presence">
-          <span className={`dot ${connState}`} />
-          <span>server {connState}</span>
-          <span className="sep">·</span>
-          <span>{presence.displays} display{presence.displays === 1 ? '' : 's'} connected</span>
+      <div className="input-topbar">
+        <span className={`dot ${connState}`} />
+        <span>server {connState}</span>
+        <span className="sep">·</span>
+        <span>
+          {presence.displays} display{presence.displays === 1 ? '' : 's'}
+        </span>
+      </div>
+
+      <div className="input-center">
+        <h1 className="input-title">找到你的數位樹</h1>
+
+        <div className="otp" role="group" aria-label="4-digit code">
+          {digits.map((d, i) => (
+            <input
+              key={i}
+              ref={(el) => {
+                inputRefs.current[i] = el;
+              }}
+              className="otp-box"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={1}
+              value={d}
+              autoFocus={i === 0}
+              disabled={isLocked}
+              onChange={(e) => updateDigit(i, e.target.value)}
+              onKeyDown={(e) => handleKeyDown(i, e)}
+              onFocus={(e) => e.currentTarget.select()}
+              aria-label={`Digit ${i + 1}`}
+            />
+          ))}
         </div>
-      </header>
 
-      <form className="entry" onSubmit={handleSubmit}>
-        <label htmlFor="code">Enter a 4-digit code (MMDD)</label>
-        <input
-          id="code"
-          type="text"
-          inputMode="numeric"
-          maxLength={4}
-          pattern="\d{4}"
-          autoFocus
-          autoComplete="off"
-          value={code}
-          onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
-          disabled={state.kind === 'submitting' || state.kind === 'searching'}
-        />
-        <button type="submit" disabled={!canSubmit}>
-          {state.kind === 'submitting' || state.kind === 'searching' ? 'Searching…' : 'Grow tree'}
-        </button>
-      </form>
-
-      <section className="status">
-        <StatusView state={state} />
-      </section>
+        <div className="input-status">
+          <StatusView state={state} />
+        </div>
+      </div>
     </main>
   );
 }
@@ -146,7 +202,7 @@ export function InputPage() {
 function StatusView({ state }: { state: InputState }) {
   switch (state.kind) {
     case 'idle':
-      return <p className="muted">Waiting for input.</p>;
+      return <p className="muted">&nbsp;</p>;
     case 'submitting':
       return <p>Submitting {state.code}…</p>;
     case 'searching': {
@@ -154,7 +210,7 @@ function StatusView({ state }: { state: InputState }) {
       return (
         <div>
           <p>
-            Searching for photos · checked {state.checked}/{SEARCH_CANDIDATES} · found {state.found}/9
+            Searching · {state.checked}/{SEARCH_CANDIDATES} · found {state.found}/9
           </p>
           <div className="bar">
             <div className="bar-fill" style={{ width: `${pct}%` }} />
@@ -165,30 +221,13 @@ function StatusView({ state }: { state: InputState }) {
     case 'ready':
     case 'rendering':
       return (
-        <div>
-          <p>
-            {state.kind === 'rendering' ? 'Rendering on display — ' : 'Display ready — '}
-            {state.trees.length} real / {state.fallbackSlots.length} fallback
-          </p>
-          <div className="grid">
-            {Array.from({ length: 9 }, (_, i) => {
-              const tree = state.trees[i];
-              const isFallback = state.fallbackSlots.includes(i);
-              return (
-                <div key={i} className={`tile ${isFallback ? 'tile-fallback' : ''}`}>
-                  {tree ? (
-                    <img src={tree.proxyUrl} alt={`${tree.dist} / ${tree.treeId}`} loading="lazy" />
-                  ) : (
-                    <span>fallback</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <p>
+          {state.kind === 'rendering' ? 'Rendering on display — ' : 'Display ready — '}
+          {state.trees.length} real / {state.fallbackSlots.length} fallback
+        </p>
       );
     case 'done':
-      return <p className="muted">Done. Enter another code.</p>;
+      return <p className="muted">完成。請輸入下一組代碼。</p>;
     case 'error':
       return <p className="error">Error: {state.message}</p>;
   }
