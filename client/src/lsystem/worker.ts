@@ -18,6 +18,7 @@ export type BuildMsg = {
 
 export type BuildResult = {
   type: 'build-result';
+  seed: number;
   iterations: number;
   stringLength: number;
   segments: Float32Array;
@@ -63,6 +64,7 @@ self.addEventListener('message', async (event: MessageEvent<BuildMsg>) => {
 
     const result: BuildResult = {
       type: 'build-result',
+      seed: msg.seed,
       iterations,
       stringLength: str.length,
       segments: geometry.segments,

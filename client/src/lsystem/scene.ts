@@ -1,5 +1,37 @@
 import { LEAF_STRIDE, RECT_STRIDE, SEG_STRIDE } from '../../../shared/src/types';
+import { Xorshift32 } from './rng';
 import type { BuildResult } from './worker';
+
+// Wireframe ground grid sits behind/under the tree. Same seed as the tree
+// drives the per-vertex jitter and height displacement, so each code grows
+// its own unique terrain alongside its unique tree. Static — computed once
+// in the constructor and projected to screen each frame.
+//
+// The grid is laid out so the tree plants in the middle of the visible
+// terrain, not on its near edge: PLANT_JZ rows of "apron" extend between
+// the viewer and the tree, and (GROUND_NZ - PLANT_JZ) rows recede behind
+// the tree toward the horizon.
+const GROUND_NX = 34;
+const GROUND_NZ = 26;
+// Plant row sits four rows into the grid, so the tree lands on an interior
+// horizontal line (not the near edge). The four foreground rows provide
+// visible "ground in front of the tree."
+const PLANT_JZ = 4;
+const GROUND_HALF_W = 16;
+
+// Canvas-y fractions that drive the one-point perspective. gz for each
+// row is derived from its target sy via gz = FOCAL_FRAC / (sy - HORIZON_Y_FRAC)
+// (implicit eyeH = 1), so the plant row lands exactly on TREE_BASE_Y_FRAC
+// and the grid's front edge sits close to the canvas bottom.
+const HORIZON_Y_FRAC = 0.50;
+const FOCAL_FRAC = 0.55;
+const GROUND_FRONT_Y_FRAC = 0.98;
+const TREE_BASE_Y_FRAC = 0.84;
+const HORIZON_ROW_Y_FRAC = 0.515;
+
+const GROUND_Z_FRONT = FOCAL_FRAC / (GROUND_FRONT_Y_FRAC - HORIZON_Y_FRAC);
+const GROUND_Z_PLANT = FOCAL_FRAC / (TREE_BASE_Y_FRAC - HORIZON_Y_FRAC);
+const GROUND_Z_FAR = FOCAL_FRAC / (HORIZON_ROW_Y_FRAC - HORIZON_Y_FRAC);
 
 const GROWTH_MS = 6000;
 const FRAME_BUDGET_MS = 14;
@@ -59,6 +91,20 @@ export class Scene {
   // eases toward its target bend instead of snapping, giving natural inertia.
   private bLocalAngleSmoothed: Float32Array;
   private lastFrameMs = 0;
+  // Static per-vertex ground data, precomputed once from the seed:
+  //  - groundGx/Gz: jittered world positions (cells aren't on a perfect grid)
+  //  - groundHAmbient: baseline terrain height (multi-octave noise)
+  // Per-vertex screen positions (groundSx/Sy) and depth alphas are recomputed
+  // each frame because they depend on canvas size; the underlying terrain is fixed.
+  // groundCellDiag[cellIdx] picks the diagonal orientation (0 = NW→SE, 1 = NE→SW)
+  // so the triangulation looks organic, not perfectly symmetric.
+  private groundGx: Float32Array;
+  private groundGz: Float32Array;
+  private groundHAmbient: Float32Array;
+  private groundCellDiag: Uint8Array;
+  private groundSx: Float32Array;
+  private groundSy: Float32Array;
+  private groundAlpha: Float32Array;
 
   constructor(canvas: HTMLCanvasElement, data: BuildResult) {
     this.canvas = canvas;
@@ -115,6 +161,86 @@ export class Scene {
     this.bVx = new Float32Array(this.branchCount);
     this.bVy = new Float32Array(this.branchCount);
     this.bLocalAngleSmoothed = new Float32Array(this.branchCount);
+
+    // Ground: derive all terrain data from the tree's seed so each code
+    // grows its own landscape. xor-mix with a constant so the ground
+    // randomness doesn't correlate with the tree structure for the same seed.
+    const gRng = new Xorshift32((data.seed ^ 0x5f1e_a3b7) >>> 0);
+
+    // Six sine/cosine octaves — phases and a small frequency multiplier are
+    // picked per seed so hills/valleys land in different places each time.
+    const phases = new Float32Array(6);
+    const freqs = new Float32Array(6);
+    for (let i = 0; i < 6; i++) {
+      phases[i] = gRng.range(0, Math.PI * 2);
+      freqs[i] = gRng.range(0.82, 1.22);
+    }
+    // Per-seed amplitude wobble so some codes get gentler terrain, others steeper.
+    const ampMul = gRng.range(0.85, 1.25);
+
+    const nVX = GROUND_NX + 1;
+    const nVZ = GROUND_NZ + 1;
+    const vertCount = nVX * nVZ;
+    this.groundGx = new Float32Array(vertCount);
+    this.groundGz = new Float32Array(vertCount);
+    this.groundHAmbient = new Float32Array(vertCount);
+    this.groundCellDiag = new Uint8Array(GROUND_NX * GROUND_NZ);
+    this.groundSx = new Float32Array(vertCount);
+    this.groundSy = new Float32Array(vertCount);
+    this.groundAlpha = new Float32Array(vertCount);
+
+    const cellX = (2 * GROUND_HALF_W) / GROUND_NX;
+    const rowGz = (jz: number): number => {
+      if (jz <= PLANT_JZ) {
+        const t = jz / PLANT_JZ;
+        const syFrac =
+          GROUND_FRONT_Y_FRAC + (TREE_BASE_Y_FRAC - GROUND_FRONT_Y_FRAC) * t;
+        return FOCAL_FRAC / (syFrac - HORIZON_Y_FRAC);
+      }
+      const u = (jz - PLANT_JZ) / (GROUND_NZ - PLANT_JZ);
+      return GROUND_Z_PLANT + (GROUND_Z_FAR - GROUND_Z_PLANT) * (u * u * 0.55 + u * 0.45);
+    };
+
+    for (let jz = 0; jz < nVZ; jz++) {
+      // Row gz is chosen so the row projects to a specific canvas y — see
+      // rowGz(). The plant row must stay flat (constant gz) so the tree
+      // plants on a straight horizontal grid line; every other row gets
+      // per-vertex z-jitter so the ground looks like land, not a lattice.
+      const gzRow = rowGz(jz);
+      const cellZ = Math.max(0.08, rowGz(Math.min(GROUND_NZ, jz + 1)) - gzRow);
+
+      for (let ix = 0; ix < nVX; ix++) {
+        const gxBase = (ix / GROUND_NX - 0.5) * 2 * GROUND_HALF_W;
+        const edgeDamp = Math.min(1, ix / 2, (GROUND_NX - ix) / 2);
+        const jxAmp = cellX * 0.42 * edgeDamp;
+        const jzAmp = jz === PLANT_JZ ? 0 : cellZ * 0.32 * edgeDamp;
+        const gx = gxBase + (gRng.next() - 0.5) * 2 * jxAmp;
+        const gz = gzRow + (gRng.next() - 0.5) * 2 * jzAmp;
+
+        // Multi-octave rolling terrain. hAmbient is kept as a "shape"
+        // (approx ±0.5 world units); drawGround rescales it per-depth so
+        // the screen-space wobble stays bounded in the foreground (where
+        // tiny h shifts move rows a lot) and grows in the distance.
+        const h =
+          0.22 * Math.sin(0.18 * freqs[0]! * gx + phases[0]!) *
+                 Math.cos(0.14 * freqs[1]! * gz + phases[1]!) +
+          0.13 * Math.sin(0.42 * freqs[2]! * gx + phases[2]!) *
+                 Math.cos(0.32 * freqs[3]! * gz + phases[3]!) +
+          0.07 * Math.sin(0.78 * freqs[4]! * (gx + 0.7 * gz) + phases[4]!) +
+          0.04 * Math.sin(1.35 * freqs[5]! * gx - 0.95 * freqs[0]! * gz + phases[1]! + 1.7) +
+          0.02 * Math.cos(2.2 * freqs[3]! * gx + 1.7 * freqs[2]! * gz + phases[5]! - 0.4);
+
+        const k = jz * nVX + ix;
+        this.groundGx[k] = gx;
+        this.groundGz[k] = gz;
+        this.groundHAmbient[k] = h * ampMul;
+      }
+    }
+
+    // Randomize diagonal direction per cell — breaks the symmetric triangulation.
+    for (let c = 0; c < this.groundCellDiag.length; c++) {
+      this.groundCellDiag[c] = gRng.next() < 0.5 ? 0 : 1;
+    }
   }
 
   start(): void {
@@ -175,6 +301,9 @@ export class Scene {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    // Ground first — it sits behind the tree in canvas space.
+    this.drawGround();
+
     const padding = 60;
     const treeW = Math.max(1, this.bounds.maxX - this.bounds.minX);
     const treeH = Math.max(1, this.bounds.maxY - this.bounds.minY);
@@ -183,7 +312,7 @@ export class Scene {
     const scale =
       Math.min((canvas.width - 2 * padding) / treeW, maxH / treeH);
     const cx = canvas.width / 2;
-    const cy = canvas.height * 0.90;
+    const cy = canvas.height * TREE_BASE_Y_FRAC;
     // Cache transform for pointer hit-testing on the next event.
     this.tScale = scale;
     this.tCx = cx;
@@ -454,6 +583,125 @@ export class Scene {
       ctx.restore();
     }
 
+    ctx.restore();
+  }
+
+  private drawGround(): void {
+    const { ctx, canvas } = this;
+    const W = canvas.width;
+    const H = canvas.height;
+
+    // One-point perspective. eyeH is implicit 1: with the gz constants
+    // derived above, a vertex with h=0 at gz=GROUND_Z_PLANT projects to
+    // y = TREE_BASE_Y_FRAC * H, so the plant row is a horizontal line
+    // exactly where the tree trunk ends.
+    const horizonY = H * HORIZON_Y_FRAC;
+    const f = H * FOCAL_FRAC;
+    const cxp = W / 2;
+
+    const nx = GROUND_NX;
+    const nz = GROUND_NZ;
+    const nVX = nx + 1;
+    const nVZ = nz + 1;
+
+    const gxArr = this.groundGx;
+    const gzArr = this.groundGz;
+    const hAmb = this.groundHAmbient;
+    const sxArr = this.groundSx;
+    const syArr = this.groundSy;
+    const aArr = this.groundAlpha;
+
+    // hAmbient sits roughly in [-0.5, 0.5] world units. Rescaled below so
+    // the *screen-space* wobble stays bounded regardless of depth.
+    const HAMB_BASELINE = 0.5;
+    for (let jz = 0; jz < nVZ; jz++) {
+      // Target screen-y wobble, as a fraction of canvas height:
+      //   - plant row: zero (must be flat so the trunk plants on it).
+      //   - foreground: small (rows are far apart on screen already;
+      //     adding big wobble would crumple them).
+      //   - background: grows with distance so distant hills read as hills.
+      let targetWobble: number;
+      if (jz === PLANT_JZ) {
+        targetWobble = 0;
+      } else if (jz < PLANT_JZ) {
+        targetWobble = 0.011;
+      } else {
+        targetWobble = Math.min(0.028, 0.010 + 0.0035 * (jz - PLANT_JZ));
+      }
+      for (let ix = 0; ix < nVX; ix++) {
+        const k = jz * nVX + ix;
+        const gx = gxArr[k]!;
+        const gz = gzArr[k]!;
+        // Convert target screen wobble to a world-h amplitude for this depth:
+        //   Δsy = f*Δh/gz  ⇒  Δh = Δsy*gz/f = targetWobble*gz/FOCAL_FRAC
+        // Cap so h never approaches eyeH = 1 (which would flip past horizon).
+        const worldAmp = Math.min(0.4, (targetWobble * gz) / FOCAL_FRAC);
+        const h = (hAmb[k]! / HAMB_BASELINE) * worldAmp;
+
+        sxArr[k] = cxp + (f * gx) / gz;
+        syArr[k] = horizonY + (f * (1 - h)) / gz;
+        const dNorm = (gz - GROUND_Z_FRONT) / (GROUND_Z_FAR - GROUND_Z_FRONT);
+        aArr[k] = Math.max(0.05, 1 - dNorm * 0.88);
+      }
+    }
+
+    ctx.save();
+    const lineW = Math.max(1, W / 1600);
+    ctx.lineWidth = lineW;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#7a828c';
+
+    // Horizontal rows — one path per row, alpha fades with distance.
+    for (let jz = 0; jz < nVZ; jz++) {
+      const rowA = aArr[jz * nVX]!;
+      if (rowA < 0.06) continue;
+      ctx.globalAlpha = rowA * 0.55;
+      ctx.beginPath();
+      for (let ix = 0; ix < nVX; ix++) {
+        const k = jz * nVX + ix;
+        if (ix === 0) ctx.moveTo(sxArr[k]!, syArr[k]!);
+        else ctx.lineTo(sxArr[k]!, syArr[k]!);
+      }
+      ctx.stroke();
+    }
+
+    // Vertical columns — a column spans many depths, so use a moderate
+    // single alpha and batch into one path.
+    ctx.globalAlpha = 0.30;
+    ctx.beginPath();
+    for (let ix = 0; ix < nVX; ix++) {
+      for (let jz = 0; jz < nVZ; jz++) {
+        const k = jz * nVX + ix;
+        if (jz === 0) ctx.moveTo(sxArr[k]!, syArr[k]!);
+        else ctx.lineTo(sxArr[k]!, syArr[k]!);
+      }
+    }
+    ctx.stroke();
+
+    // Diagonals — direction chosen per cell at seed time so the
+    // triangulation looks organic instead of repeating NW→SE everywhere.
+    ctx.globalAlpha = 0.22;
+    ctx.beginPath();
+    const diag = this.groundCellDiag;
+    for (let jz = 0; jz < nz; jz++) {
+      for (let ix = 0; ix < nx; ix++) {
+        const k00 = jz * nVX + ix;
+        const k10 = jz * nVX + (ix + 1);
+        const k01 = (jz + 1) * nVX + ix;
+        const k11 = (jz + 1) * nVX + (ix + 1);
+        if (diag[jz * nx + ix] === 0) {
+          ctx.moveTo(sxArr[k00]!, syArr[k00]!);
+          ctx.lineTo(sxArr[k11]!, syArr[k11]!);
+        } else {
+          ctx.moveTo(sxArr[k10]!, syArr[k10]!);
+          ctx.lineTo(sxArr[k01]!, syArr[k01]!);
+        }
+      }
+    }
+    ctx.stroke();
+
+    ctx.globalAlpha = 1;
     ctx.restore();
   }
 
