@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { TreeRecord, WSMessage } from '../../../shared/src/types';
 import { useWebSocket } from '../ws';
+import { BackgroundField } from './BackgroundField';
 import './InputPage.css';
 
 type InputState =
@@ -156,6 +157,7 @@ export function InputPage() {
 
   return (
     <main className="input">
+      <BackgroundField />
       <div className="input-topbar">
         <span className={`dot ${connState}`} />
         <span>server {connState}</span>
@@ -166,33 +168,35 @@ export function InputPage() {
       </div>
 
       <div className="input-center">
-        <h1 className="input-title">找到你的數位樹</h1>
+        <div className="input-card">
+          <h1 className="input-title">IDentity</h1>
 
-        <div className="otp" role="group" aria-label="4-digit code">
-          {digits.map((d, i) => (
-            <input
-              key={i}
-              ref={(el) => {
-                inputRefs.current[i] = el;
-              }}
-              className="otp-box"
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={1}
-              value={d}
-              autoFocus={i === 0}
-              disabled={isLocked}
-              onChange={(e) => updateDigit(i, e.target.value)}
-              onKeyDown={(e) => handleKeyDown(i, e)}
-              onFocus={(e) => e.currentTarget.select()}
-              aria-label={`Digit ${i + 1}`}
-            />
-          ))}
-        </div>
+          <div className="otp" role="group" aria-label="4-digit code">
+            {digits.map((d, i) => (
+              <input
+                key={i}
+                ref={(el) => {
+                  inputRefs.current[i] = el;
+                }}
+                className="otp-box"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={1}
+                value={d}
+                autoFocus={i === 0}
+                disabled={isLocked}
+                onChange={(e) => updateDigit(i, e.target.value)}
+                onKeyDown={(e) => handleKeyDown(i, e)}
+                onFocus={(e) => e.currentTarget.select()}
+                aria-label={`Digit ${i + 1}`}
+              />
+            ))}
+          </div>
 
-        <div className="input-status">
-          <StatusView state={state} />
+          <div className="input-status">
+            <StatusView state={state} />
+          </div>
         </div>
       </div>
     </main>

@@ -265,6 +265,7 @@ export class Scene {
     for (let c = 0; c < this.groundCellDiag.length; c++) {
       this.groundCellDiag[c] = gRng.next() < 0.5 ? 0 : 1;
     }
+
   }
 
   start(): void {

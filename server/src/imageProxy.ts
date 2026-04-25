@@ -14,6 +14,40 @@ export async function ensureCacheDir(): Promise<void> {
   await fs.mkdir(CACHE_DIR, { recursive: true });
 }
 
+const HASH_RE = /^[a-f0-9]{64}$/;
+
+export async function listCachedImages(): Promise<string[]> {
+  try {
+    const entries = await fs.readdir(CACHE_DIR);
+    return entries
+      .filter((f) => f.endsWith('.jpg'))
+      .map((f) => f.slice(0, -4))
+      .filter((h) => HASH_RE.test(h));
+  } catch {
+    return [];
+  }
+}
+
+export async function handleCachedImage(req: Request, res: Response): Promise<void> {
+  const raw = String(req.params.hash ?? '');
+  const hash = raw.endsWith('.jpg') ? raw.slice(0, -4) : raw;
+  if (!HASH_RE.test(hash)) {
+    res.status(400).send('bad hash');
+    return;
+  }
+  const cpath = path.join(CACHE_DIR, `${hash}.jpg`);
+  if (!fssync.existsSync(cpath)) {
+    res.status(404).send('not found');
+    return;
+  }
+  res.setHeader('Content-Type', 'image/jpeg');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-site');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  fssync.createReadStream(cpath).pipe(res);
+}
+
 function cacheKey(dist: string, treeId: string): string {
   return crypto.createHash('sha256').update(`${dist}/${treeId}`).digest('hex');
 }

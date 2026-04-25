@@ -12,6 +12,7 @@
     "build": "npm -w @kai/client run build && npm -w @kai/server run build",
     "start": "NODE_ENV=production node server/dist/index.js",
     "refresh-registry": "tsx scripts/refresh-registry.ts",
+    "prefetch-bg-images": "tsx scripts/prefetch-bg-images.ts",
     "typecheck": "tsc -p server/tsconfig.json --noEmit && tsc -p client/tsconfig.json --noEmit"
   },
   "devDependencies": {

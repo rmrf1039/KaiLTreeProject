@@ -13,7 +13,7 @@ import type {
 } from '../../shared/src/types.js';
 import { loadRegistry, recordCount } from './registry.js';
 import { LookupError, findTrees } from './findTrees.js';
-import { ensureCacheDir, handleTreeImage } from './imageProxy.js';
+import { ensureCacheDir, handleCachedImage, handleTreeImage, listCachedImages } from './imageProxy.js';
 import { getCurrentTree, loadSnapshot, saveSnapshotSync } from './state.js';
 import { attachWebSocket, broadcast, countByRole } from './ws.js';
 
@@ -70,6 +70,14 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.get('/proxy/tree-image/:dist/:file', handleTreeImage);
+
+app.get('/api/bg-images', async (_req, res) => {
+  const hashes = await listCachedImages();
+  const urls = hashes.map((h) => `/proxy/cached-image/${h}`);
+  res.json({ images: urls });
+});
+
+app.get('/proxy/cached-image/:hash', handleCachedImage);
 
 type ActiveSearch = {
   searchId: string;
