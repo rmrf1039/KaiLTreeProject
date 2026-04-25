@@ -12,7 +12,7 @@ import type { BuildResult } from './worker';
 // the viewer and the tree, and (GROUND_NZ - PLANT_JZ) rows recede behind
 // the tree toward the horizon.
 const GROUND_NX = 34;
-const GROUND_NZ = 26;
+const GROUND_NZ = 11;
 // Plant row sits four rows into the grid, so the tree lands on an interior
 // horizontal line (not the near edge). The four foreground rows provide
 // visible "ground in front of the tree."
@@ -23,11 +23,16 @@ const GROUND_HALF_W = 16;
 // row is derived from its target sy via gz = FOCAL_FRAC / (sy - HORIZON_Y_FRAC)
 // (implicit eyeH = 1), so the plant row lands exactly on TREE_BASE_Y_FRAC
 // and the grid's front edge sits close to the canvas bottom.
+//
+// The grid occupies roughly one-third of the canvas vertically:
+// GROUND_FRONT_Y_FRAC − HORIZON_ROW_Y_FRAC ≈ 0.33. The far edge sits
+// above the plant row but well below the conceptual horizon, so the grid
+// reads as a contained band of land rather than receding forever.
 const HORIZON_Y_FRAC = 0.50;
 const FOCAL_FRAC = 0.55;
 const GROUND_FRONT_Y_FRAC = 0.98;
 const TREE_BASE_Y_FRAC = 0.84;
-const HORIZON_ROW_Y_FRAC = 0.515;
+const HORIZON_ROW_Y_FRAC = 0.72;
 
 const GROUND_Z_FRONT = FOCAL_FRAC / (GROUND_FRONT_Y_FRAC - HORIZON_Y_FRAC);
 const GROUND_Z_PLANT = FOCAL_FRAC / (TREE_BASE_Y_FRAC - HORIZON_Y_FRAC);
@@ -101,6 +106,10 @@ export class Scene {
   private groundGx: Float32Array;
   private groundGz: Float32Array;
   private groundHAmbient: Float32Array;
+  // Actual peak of |hAmbient| across all vertices — used as the
+  // normalizer so drawGround can rescale the terrain shape into a
+  // target screen-space wobble without guessing at theoretical maxima.
+  private groundHAmbMax = 1;
   private groundCellDiag: Uint8Array;
   private groundSx: Float32Array;
   private groundSy: Float32Array;
@@ -218,17 +227,21 @@ export class Scene {
         const gz = gzRow + (gRng.next() - 0.5) * 2 * jzAmp;
 
         // Multi-octave rolling terrain. hAmbient is kept as a "shape"
-        // (approx ±0.5 world units); drawGround rescales it per-depth so
+        // (approx ±0.85 world units); drawGround rescales it per-depth so
         // the screen-space wobble stays bounded in the foreground (where
         // tiny h shifts move rows a lot) and grows in the distance.
+        //
+        // gz frequencies are pitched to the compressed z-range of the
+        // shortened grid so receding rows actually show rises and dips
+        // rather than staying at a near-constant height.
         const h =
-          0.22 * Math.sin(0.18 * freqs[0]! * gx + phases[0]!) *
-                 Math.cos(0.14 * freqs[1]! * gz + phases[1]!) +
-          0.13 * Math.sin(0.42 * freqs[2]! * gx + phases[2]!) *
-                 Math.cos(0.32 * freqs[3]! * gz + phases[3]!) +
-          0.07 * Math.sin(0.78 * freqs[4]! * (gx + 0.7 * gz) + phases[4]!) +
-          0.04 * Math.sin(1.35 * freqs[5]! * gx - 0.95 * freqs[0]! * gz + phases[1]! + 1.7) +
-          0.02 * Math.cos(2.2 * freqs[3]! * gx + 1.7 * freqs[2]! * gz + phases[5]! - 0.4);
+          0.45 * Math.sin(0.15 * freqs[0]! * gx + phases[0]!) *
+                 Math.cos(1.6 * freqs[1]! * gz + phases[1]!) +
+          0.22 * Math.sin(0.38 * freqs[2]! * gx + phases[2]!) *
+                 Math.cos(3.2 * freqs[3]! * gz + phases[3]!) +
+          0.10 * Math.sin(0.72 * freqs[4]! * (gx + 0.3 * gz) + phases[4]!) +
+          0.05 * Math.sin(1.15 * freqs[5]! * gx + 5.8 * freqs[0]! * gz + phases[1]! + 1.7) +
+          0.03 * Math.cos(2.0 * freqs[3]! * gx + 9.0 * freqs[2]! * gz + phases[5]! - 0.4);
 
         const k = jz * nVX + ix;
         this.groundGx[k] = gx;
@@ -236,6 +249,17 @@ export class Scene {
         this.groundHAmbient[k] = h * ampMul;
       }
     }
+
+    // Normalize: find the actual peak of |hAmbient| so drawGround can map
+    // the terrain "shape" into a target screen-space wobble predictably
+    // (rather than underestimating because random phases usually put the
+    // per-octave sines well below their theoretical max at the same point).
+    let hMax = 0;
+    for (let k = 0; k < vertCount; k++) {
+      const v = Math.abs(this.groundHAmbient[k]!);
+      if (v > hMax) hMax = v;
+    }
+    this.groundHAmbMax = Math.max(0.01, hMax);
 
     // Randomize diagonal direction per cell — breaks the symmetric triangulation.
     for (let c = 0; c < this.groundCellDiag.length; c++) {
@@ -313,6 +337,10 @@ export class Scene {
       Math.min((canvas.width - 2 * padding) / treeW, maxH / treeH);
     const cx = canvas.width / 2;
     const cy = canvas.height * TREE_BASE_Y_FRAC;
+
+    // Soft ground shadow under the tree — drawn in canvas space on top of
+    // the grid lines but below the tree tiles.
+    this.drawShadow(scale, cx, cy, t);
     // Cache transform for pointer hit-testing on the next event.
     this.tScale = scale;
     this.tCx = cx;
@@ -611,22 +639,24 @@ export class Scene {
     const syArr = this.groundSy;
     const aArr = this.groundAlpha;
 
-    // hAmbient sits roughly in [-0.5, 0.5] world units. Rescaled below so
-    // the *screen-space* wobble stays bounded regardless of depth.
-    const HAMB_BASELINE = 0.5;
+    // hAmbMax is the actual observed peak of |hAmbient|. Dividing by it
+    // gives a normalized [-1, 1] terrain shape that maps cleanly onto
+    // the per-row worldAmp target below.
+    const hNorm = this.groundHAmbMax;
     for (let jz = 0; jz < nVZ; jz++) {
       // Target screen-y wobble, as a fraction of canvas height:
       //   - plant row: zero (must be flat so the trunk plants on it).
-      //   - foreground: small (rows are far apart on screen already;
-      //     adding big wobble would crumple them).
-      //   - background: grows with distance so distant hills read as hills.
+      //   - foreground: noticeable rises/dips so the ground in front of
+      //     the tree reads as hilly land, not a polished floor.
+      //   - background: grows with distance so receding rows arc over
+      //     hills and sink into valleys.
       let targetWobble: number;
       if (jz === PLANT_JZ) {
         targetWobble = 0;
       } else if (jz < PLANT_JZ) {
-        targetWobble = 0.011;
+        targetWobble = 0.03;
       } else {
-        targetWobble = Math.min(0.028, 0.010 + 0.0035 * (jz - PLANT_JZ));
+        targetWobble = Math.min(0.07, 0.028 + 0.009 * (jz - PLANT_JZ));
       }
       for (let ix = 0; ix < nVX; ix++) {
         const k = jz * nVX + ix;
@@ -635,8 +665,8 @@ export class Scene {
         // Convert target screen wobble to a world-h amplitude for this depth:
         //   Δsy = f*Δh/gz  ⇒  Δh = Δsy*gz/f = targetWobble*gz/FOCAL_FRAC
         // Cap so h never approaches eyeH = 1 (which would flip past horizon).
-        const worldAmp = Math.min(0.4, (targetWobble * gz) / FOCAL_FRAC);
-        const h = (hAmb[k]! / HAMB_BASELINE) * worldAmp;
+        const worldAmp = Math.min(0.55, (targetWobble * gz) / FOCAL_FRAC);
+        const h = (hAmb[k]! / hNorm) * worldAmp;
 
         sxArr[k] = cxp + (f * gx) / gz;
         syArr[k] = horizonY + (f * (1 - h)) / gz;
@@ -702,6 +732,40 @@ export class Scene {
     ctx.stroke();
 
     ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  private drawShadow(scale: number, cx: number, cy: number, t: number): void {
+    const { ctx } = this;
+    // Match the shadow footprint to the tree's actual crown width in
+    // canvas pixels, so the shadow tracks the crown size across seeds.
+    const treeWorldW = Math.max(1, this.bounds.maxX - this.bounds.minX);
+    const crownPx = treeWorldW * scale;
+    // Grow slightly faster than the tree so the shadow is on the ground
+    // by the time leaves fill in; easing gives it a soft ramp-in.
+    const growT = Math.min(1, t * 1.15);
+    if (growT <= 0) return;
+
+    const rx = crownPx * 0.48 * growT;
+    // Viewed from a low camera angle (horizon mid-canvas, plant row near
+    // bottom) — shadow is strongly foreshortened along the view axis.
+    const ry = rx * 0.22;
+    // Nudge slightly forward of the trunk base so it reads as shadow on
+    // the ground in front of the tree, not a blob underneath it.
+    const oy = ry * 0.25;
+
+    ctx.save();
+    ctx.translate(cx, cy + oy);
+    ctx.scale(1, ry / rx);
+    const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
+    const alpha = 0.30 * growT;
+    grad.addColorStop(0, `rgba(40, 48, 60, ${alpha})`);
+    grad.addColorStop(0.55, `rgba(40, 48, 60, ${alpha * 0.4})`);
+    grad.addColorStop(1, 'rgba(40, 48, 60, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(0, 0, rx, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
   }
 
