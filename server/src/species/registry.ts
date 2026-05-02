@@ -35,6 +35,10 @@ const SPREADING_BROADLEAF: SpeciesRegistryEntry = {
     childWidthSpan: 0.13,
     maxDepth: 8,
   },
+  asset: {
+    segmentAspect: 1.05,
+    leafSizeScale: 1.18,
+  },
 };
 
 // Columnar/spire silhouettes: Melaleuca (白千層), Bombax (木棉). Narrow angles,
@@ -62,6 +66,10 @@ const COLUMNAR_NARROW: SpeciesRegistryEntry = {
     childWidthMin: 0.78,
     childWidthSpan: 0.10,
     maxDepth: 8,
+  },
+  asset: {
+    segmentAspect: 0.72,
+    leafSizeScale: 0.85,
   },
 };
 
@@ -92,6 +100,10 @@ const PAGODA_LAYERED: SpeciesRegistryEntry = {
     childWidthMin: 0.80,
     childWidthSpan: 0.12,
     maxDepth: 8,
+  },
+  asset: {
+    segmentAspect: 0.92,
+    leafSizeScale: 1.05,
   },
 };
 

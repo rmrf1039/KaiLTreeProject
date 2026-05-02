@@ -1,4 +1,4 @@
-import type { SpeciesConfig } from '../../../shared/src/species/types';
+import type { AssetBinding, SpeciesConfig } from '../../../shared/src/species/types';
 import { buildAtlas, buildSegAtlas } from './atlas';
 import { expand } from './grammar';
 import { walk } from './turtle';
@@ -35,6 +35,7 @@ export type BuildResult = {
   branchOriginY: Float32Array;
   branchDepth: Uint8Array;
   branchCount: number;
+  asset: AssetBinding;
 };
 
 self.addEventListener('message', async (event: MessageEvent<BuildMsg>) => {
@@ -77,6 +78,7 @@ self.addEventListener('message', async (event: MessageEvent<BuildMsg>) => {
       branchOriginY: geometry.branchOriginY,
       branchDepth: geometry.branchDepth,
       branchCount: geometry.branchCount,
+      asset: msg.speciesConfig.asset,
     };
 
     (self as unknown as Worker).postMessage(result, [

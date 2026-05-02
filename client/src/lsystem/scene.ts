@@ -1,3 +1,4 @@
+import type { AssetBinding } from '../../../shared/src/species/types';
 import { LEAF_STRIDE, RECT_STRIDE, SEG_STRIDE } from '../../../shared/src/types';
 import { Xorshift32 } from './rng';
 import type { BuildResult } from './worker';
@@ -81,6 +82,7 @@ export class Scene {
   private branchOriginY: Float32Array;
   private branchDepth: Uint8Array;
   private branchCount: number;
+  private asset: AssetBinding;
   private branchMidX: Float32Array;   // average midpoint per branch (for cursor proximity)
   private branchMidY: Float32Array;
   // Per-frame skeletal state: accumulated affine transform per branch.
@@ -137,6 +139,7 @@ export class Scene {
     this.branchOriginY = data.branchOriginY;
     this.branchDepth = data.branchDepth;
     this.branchCount = data.branchCount;
+    this.asset = data.asset;
 
     // Precompute each branch's average midpoint (used for cursor proximity).
     this.branchMidX = new Float32Array(this.branchCount);
@@ -533,7 +536,7 @@ export class Scene {
           // Small seed-driven scale wobble (±4%) adds organic variety.
           const scaleWobble = 1 + jit * 0.08;
           const tileH = segLen * 1.02 * scaleWobble;
-          const tileW = segLen * 0.48 * scaleWobble * branchWidth;
+          const tileW = segLen * 0.48 * scaleWobble * branchWidth * this.asset.segmentAspect;
 
           // Rotate so photo's "up" aligns with the branch's forward direction,
           // plus a small seed-driven rotation jitter (~±5°) so each tile sits
@@ -573,7 +576,7 @@ export class Scene {
     ctx.globalAlpha = 1;
 
     const leafCount = Math.min(this.leafCount, this.leafCap);
-    const leafSizeScreen = 52;
+    const leafSizeScreen = 52 * this.asset.leafSizeScale;
     const leafH = leafSizeScreen / scale;
     for (let i = 0; i < leafCount; i++) {
       const o = i * LEAF_STRIDE;

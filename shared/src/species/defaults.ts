@@ -28,4 +28,8 @@ export const DEFAULT_SPECIES_CONFIG: SpeciesConfig = {
     childWidthSpan: 0.12,
     maxDepth: 8,
   },
+  asset: {
+    segmentAspect: 1,
+    leafSizeScale: 1,
+  },
 };
