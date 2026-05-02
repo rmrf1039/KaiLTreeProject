@@ -51,3 +51,17 @@ export function saveSnapshotSync(t: TreeReadyMessage): void {
 export function getCurrentTree(): TreeReadyMessage | null {
   return currentTree;
 }
+
+/**
+ * Drop the in-memory tree and remove the on-disk snapshot. Called when the
+ * session lifecycle returns to `idle` so a non-consenting (or any) user's
+ * generated tree does not persist past their session — privacy by default.
+ */
+export function clearSnapshot(): void {
+  currentTree = null;
+  try {
+    if (fs.existsSync(SNAPSHOT_PATH)) fs.unlinkSync(SNAPSHOT_PATH);
+  } catch {
+    /* best effort */
+  }
+}

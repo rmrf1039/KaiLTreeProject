@@ -1,100 +1,60 @@
 import { useEffect, useRef, useState } from 'react';
-import type { TreeRecord, WSMessage } from '../../../shared/src/types';
+import type { LifecycleState, TreeRecord, WSMessage } from '../../../shared/src/types';
 import { useWebSocket } from '../ws';
+import { useLifecycle } from '../lifecycle';
 import { BackgroundField } from './BackgroundField';
+import { ConsentModal } from './ConsentModal';
+import { CaptureFlow } from '../camera/CaptureFlow';
 import './InputPage.css';
-
-type InputState =
-  | { kind: 'idle' }
-  | { kind: 'submitting'; code: string }
-  | { kind: 'searching'; code: string; searchId: string; checked: number; found: number }
-  | { kind: 'ready'; code: string; trees: TreeRecord[]; fallbackSlots: number[] }
-  | { kind: 'rendering'; code: string; trees: TreeRecord[]; fallbackSlots: number[] }
-  | { kind: 'done'; code: string }
-  | { kind: 'error'; message: string };
 
 const SEARCH_CANDIDATES = 161;
 
+type TreeDetails = { trees: TreeRecord[]; fallbackSlots: number[] } | null;
+
 export function InputPage() {
   const [digits, setDigits] = useState<string[]>(['', '', '', '']);
-  const [state, setState] = useState<InputState>({ kind: 'idle' });
   const [presence, setPresence] = useState({ inputs: 0, displays: 0 });
-  const { connState, subscribe } = useWebSocket('input');
-  const doneTimerRef = useRef<number | undefined>(undefined);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [treeDetails, setTreeDetails] = useState<TreeDetails>(null);
+  const { connState, subscribe, send } = useWebSocket('input');
+  const { state: lc, dispatch } = useLifecycle(subscribe, send);
   const inputRefs = useRef<Array<HTMLInputElement | null>>([null, null, null, null]);
 
   const code = digits.join('');
-  const isLocked = state.kind === 'submitting' || state.kind === 'searching';
+  const isLocked = lc.kind !== 'idle';
 
+  // Listen for presence + tree-ready details (the lifecycle state is FSM stage;
+  // the tree-ready event carries N-real / M-fallback counts the operator sees).
   useEffect(() => {
     return subscribe((msg: WSMessage) => {
-      switch (msg.type) {
-        case 'snapshot':
-          setPresence({ inputs: msg.inputs, displays: msg.displays });
-          break;
-        case 'search:started':
-          setState((s) =>
-            s.kind === 'submitting' && s.code === msg.code
-              ? { kind: 'searching', code: msg.code, searchId: msg.searchId, checked: 0, found: 0 }
-              : s,
-          );
-          break;
-        case 'search:progress':
-          setState((s) =>
-            s.kind === 'searching' && s.searchId === msg.searchId
-              ? { ...s, checked: msg.checked, found: msg.found }
-              : s,
-          );
-          break;
-        case 'tree-ready':
-          setState({
-            kind: 'ready',
-            code: msg.code,
-            trees: msg.trees,
-            fallbackSlots: msg.fallbackSlots,
-          });
-          break;
-        case 'display:rendering':
-          setState((s) =>
-            s.kind === 'ready' ? { kind: 'rendering', code: s.code, trees: s.trees, fallbackSlots: s.fallbackSlots } : s,
-          );
-          break;
-        case 'search:failed':
-          setState({ kind: 'error', message: msg.reason });
-          break;
-        default:
-          break;
+      if (msg.type === 'snapshot') {
+        setPresence({ inputs: msg.inputs, displays: msg.displays });
+        if (msg.currentTree) {
+          setTreeDetails({ trees: msg.currentTree.trees, fallbackSlots: msg.currentTree.fallbackSlots });
+        }
+      } else if (msg.type === 'tree-ready') {
+        setTreeDetails({ trees: msg.trees, fallbackSlots: msg.fallbackSlots });
       }
     });
   }, [subscribe]);
 
+  // When the FSM returns to idle, reset the keypad and focus.
   useEffect(() => {
-    if (state.kind === 'rendering' || state.kind === 'ready') {
-      if (doneTimerRef.current !== undefined) clearTimeout(doneTimerRef.current);
-      doneTimerRef.current = window.setTimeout(() => {
-        setState((s) => (s.kind === 'rendering' || s.kind === 'ready' ? { kind: 'done', code: s.code } : s));
-      }, 8000);
+    if (lc.kind === 'idle') {
+      setDigits(['', '', '', '']);
+      setSubmitError(null);
+      setTreeDetails(null);
+      inputRefs.current[0]?.focus();
     }
-    if (state.kind === 'done') {
-      if (doneTimerRef.current !== undefined) clearTimeout(doneTimerRef.current);
-      doneTimerRef.current = window.setTimeout(() => {
-        setState({ kind: 'idle' });
-        setDigits(['', '', '', '']);
-        inputRefs.current[0]?.focus();
-      }, 2500);
-    }
-    return () => {
-      if (doneTimerRef.current !== undefined) clearTimeout(doneTimerRef.current);
-    };
-  }, [state.kind]);
+  }, [lc.kind]);
 
   function canSubmitCode(c: string): boolean {
-    return /^\d{4}$/.test(c) && (state.kind === 'idle' || state.kind === 'done' || state.kind === 'error');
+    return /^\d{4}$/.test(c) && lc.kind === 'idle';
   }
 
   async function submit(c: string): Promise<void> {
     if (!canSubmitCode(c)) return;
-    setState({ kind: 'submitting', code: c });
+    setSubmitError(null);
     const idempotencyKey = crypto.randomUUID();
     try {
       const r = await fetch('/api/submit', {
@@ -104,17 +64,16 @@ export function InputPage() {
       });
       if (!r.ok) {
         const err = (await r.json().catch(() => ({ error: 'submit-failed' }))) as { error?: string };
-        setState({ kind: 'error', message: err.error ?? `HTTP ${r.status}` });
+        setSubmitError(err.error ?? `HTTP ${r.status}`);
       }
     } catch (err) {
-      setState({ kind: 'error', message: (err as Error).message });
+      setSubmitError((err as Error).message);
     }
   }
 
   function updateDigit(index: number, value: string): void {
     const cleaned = value.replace(/\D/g, '');
     if (cleaned.length > 1) {
-      // Paste: spread across boxes starting at index
       const next = [...digits];
       for (let i = 0; i < cleaned.length && index + i < 4; i++) {
         next[index + i] = cleaned[i]!;
@@ -168,7 +127,7 @@ export function InputPage() {
       </div>
 
       <div className="input-center">
-        <div className="input-card">
+        <div className={`input-card ${lc.kind === 'prompting' || lc.kind === 'archiving' ? 'dimmed' : ''}`}>
           <h1 className="input-title">IDentity</h1>
 
           <div className="otp" role="group" aria-label="4-digit code">
@@ -195,21 +154,49 @@ export function InputPage() {
           </div>
 
           <div className="input-status">
-            <StatusView state={state} />
+            <StatusView state={lc} treeDetails={treeDetails} submitError={submitError} />
           </div>
         </div>
       </div>
+
+      {lc.kind === 'prompting' && (
+        <ConsentModal
+          sessionId={lc.sessionId}
+          deadlineEpochMs={lc.deadlineEpochMs}
+          onGrant={() => dispatch({ kind: 'consent:granted', sessionId: lc.sessionId })}
+          onDeny={() => dispatch({ kind: 'consent:denied', sessionId: lc.sessionId })}
+        />
+      )}
+      {lc.kind === 'archiving' && (
+        <CaptureFlow
+          sessionId={lc.sessionId}
+          code={lc.code}
+          deadlineEpochMs={lc.deadlineEpochMs}
+          onUploaded={() => {
+            // server transitions to resetting via /api/archive POST handler
+          }}
+          onFailed={() => dispatch({ kind: 'capture-failed', sessionId: lc.sessionId })}
+        />
+      )}
     </main>
   );
 }
 
-function StatusView({ state }: { state: InputState }) {
+function StatusView({
+  state,
+  treeDetails,
+  submitError,
+}: {
+  state: LifecycleState;
+  treeDetails: TreeDetails;
+  submitError: string | null;
+}) {
+  if (submitError) return <p className="error">Error: {submitError}</p>;
+
   switch (state.kind) {
     case 'idle':
       return <p className="muted">&nbsp;</p>;
-    case 'submitting':
-      return <p>Submitting {state.code}…</p>;
-    case 'searching': {
+    case 'querying': {
       const pct = Math.round((state.checked / SEARCH_CANDIDATES) * 100);
       return (
         <div>
@@ -222,17 +209,18 @@ function StatusView({ state }: { state: InputState }) {
         </div>
       );
     }
-    case 'ready':
-    case 'rendering':
+    case 'generating':
       return (
         <p>
-          {state.kind === 'rendering' ? 'Rendering on display — ' : 'Display ready — '}
-          {state.trees.length} real / {state.fallbackSlots.length} fallback
+          Display rendering
+          {treeDetails ? ` — ${treeDetails.trees.length} real / ${treeDetails.fallbackSlots.length} fallback` : ''}
         </p>
       );
-    case 'done':
+    case 'prompting':
+      return <p className="muted">等待回覆…</p>;
+    case 'archiving':
+      return <p className="muted">拍照中…</p>;
+    case 'resetting':
       return <p className="muted">完成。請輸入下一組代碼。</p>;
-    case 'error':
-      return <p className="error">Error: {state.message}</p>;
   }
 }

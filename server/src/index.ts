@@ -14,11 +14,15 @@ import type {
 import { loadRegistry, recordCount } from './registry.js';
 import { LookupError, findTrees } from './findTrees.js';
 import { ensureCacheDir, handleCachedImage, handleTreeImage, listCachedImages } from './imageProxy.js';
-import { getCurrentTree, loadSnapshot, saveSnapshotSync } from './state.js';
+import { clearSnapshot, getCurrentTree, loadSnapshot, saveSnapshotSync } from './state.js';
 import { applyModifiers } from '../../shared/src/species/modifiers.js';
 import { resolveSpecies } from './species/resolver.js';
 import { computeModifiers } from './species/stress.js';
 import { attachWebSocket, broadcast, countByRole } from './ws.js';
+import { lifecycle } from './lifecycle.js';
+import { appendArchive, archiveCount, archiveFile, loadArchiveIndex, listArchive } from './archive.js';
+import { buildMetaTreeManifest } from './metaTree.js';
+import fs from 'node:fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const clientRoot = path.resolve(__dirname, '../../client');
@@ -61,6 +65,14 @@ try {
 }
 
 loadSnapshot();
+loadArchiveIndex();
+
+// When the session returns to idle, expunge the in-memory + on-disk tree.
+// Privacy: a non-consented (or any past) user's geometry must not survive past
+// the session boundary.
+lifecycle.subscribe((state) => {
+  if (state.kind === 'idle') clearSnapshot();
+});
 
 const app = express();
 const httpServer = createServer(app);
@@ -73,10 +85,105 @@ app.get('/api/health', (_req, res) => {
     registryLoaded,
     records: recordCount(),
     currentTree: getCurrentTree()?.code ?? null,
+    lifecycle: lifecycle.getState().kind,
+    archived: archiveCount(),
     inputs: countByRole('input'),
     displays: countByRole('display'),
   });
 });
+
+app.get('/api/meta-tree', (_req, res) => {
+  res.json(buildMetaTreeManifest());
+});
+
+app.get('/api/archive/leaves', (req, res) => {
+  const limit = Math.max(1, Math.min(256, Number(req.query.limit) || 64));
+  const recent = listArchive(limit);
+  res.json({
+    entries: recent.map((e) => ({
+      id: e.id,
+      code: e.code,
+      addedAt: e.addedAt,
+      thumbnailUrl: `/proxy/archive-image/${e.id}`,
+    })),
+  });
+});
+
+app.get('/proxy/archive-image/:id', (req, res) => {
+  const id = String(req.params.id ?? '').replace(/\.(webp|jpg|jpeg)$/, '');
+  const f = archiveFile(id);
+  if (!f) {
+    res.status(404).send('not found');
+    return;
+  }
+  res.setHeader('Content-Type', f.contentType);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-site');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  fs.createReadStream(f.path).pipe(res);
+});
+
+// Raw image upload — restricted to image/webp + image/jpeg via the express.raw
+// type filter. Both formats are produced from a fresh canvas re-encode on the
+// client, so neither can carry source EXIF; defense in depth is the magic-byte
+// check below + the strict content-type allow-list.
+app.post(
+  '/api/archive',
+  express.raw({ type: ['image/webp', 'image/jpeg'], limit: '1mb' }),
+  (req, res) => {
+    const sessionId = String(req.query.sessionId ?? '');
+    const code = String(req.query.code ?? '');
+    if (!sessionId || !code) {
+      res.status(400).json({ error: 'missing-params' });
+      return;
+    }
+
+    const lc = lifecycle.getState();
+    if (lc.kind !== 'archiving' || lc.sessionId !== sessionId || lc.code !== code) {
+      res.status(409).json({ error: 'not-in-archiving', state: lc.kind });
+      return;
+    }
+
+    const buf = req.body as Buffer | undefined;
+    if (!Buffer.isBuffer(buf) || buf.length === 0) {
+      res.status(400).json({ error: 'empty-body' });
+      return;
+    }
+    // WebP magic: "RIFF" .... "WEBP"
+    const isWebp =
+      buf.length >= 12 &&
+      buf[0] === 0x52 &&
+      buf[1] === 0x49 &&
+      buf[2] === 0x46 &&
+      buf[3] === 0x46 &&
+      buf[8] === 0x57 &&
+      buf[9] === 0x45 &&
+      buf[10] === 0x42 &&
+      buf[11] === 0x50;
+    // JPEG magic: 0xff 0xd8 0xff (SOI + first segment marker prefix)
+    const isJpeg =
+      buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+    if (!isWebp && !isJpeg) {
+      res.status(415).json({ error: 'not-image' });
+      return;
+    }
+
+    // Snapshot the user-tree shape from the active session so the meta-tree
+    // can replay it: same code → same species → same seed. The current tree
+    // exists here because we're in the `archiving` lifecycle state, which
+    // only follows a successful tree-resolve.
+    const cur = getCurrentTree();
+    const treeShape = cur && cur.code === code
+      ? { seed: cur.seed, speciesConfig: cur.speciesConfig }
+      : undefined;
+
+    const result = appendArchive(buf, code, isWebp ? 'webp' : 'jpg', treeShape);
+    lifecycle.transition({ kind: 'capture-uploaded', sessionId });
+    if (result.isNew) broadcast({ type: 'meta-tree:updated' });
+    res.json({ id: result.id, isNew: result.isNew });
+  },
+);
 
 app.get('/proxy/tree-image/:dist/:file', handleTreeImage);
 
@@ -123,17 +230,26 @@ app.post('/api/submit', (req, res) => {
     return;
   }
 
+  // FSM is the gatekeeper for "can a new session start now?". A submit is only
+  // legal from idle/resetting; if the previous session is still mid-prompt or
+  // mid-archive, refuse rather than racing.
+  const result = lifecycle.transition({ kind: 'submit', code });
+  if (!result.ok) {
+    res.status(409).json({ error: 'busy' });
+    return;
+  }
+  const sessionId = (result.state as { sessionId: string }).sessionId;
+
   if (activeSearch) activeSearch.ctrl.abort();
 
-  const searchId = crypto.randomUUID();
   const ctrl = new AbortController();
-  activeSearch = { searchId, code, idempotencyKey, ctrl, startedAt: Date.now() };
+  activeSearch = { searchId: sessionId, code, idempotencyKey, ctrl, startedAt: Date.now() };
   lastSubmitAt = Date.now();
 
-  const response: SubmitResponse = { status: 'accepted', searchId };
+  const response: SubmitResponse = { status: 'accepted', searchId: sessionId };
   res.json(response);
 
-  runSearch(searchId, code, ctrl);
+  runSearch(sessionId, code, ctrl);
 });
 
 async function runSearch(searchId: string, code: string, ctrl: AbortController): Promise<void> {
@@ -142,6 +258,7 @@ async function runSearch(searchId: string, code: string, ctrl: AbortController):
   try {
     const trees = await findTrees(code, ctrl.signal, (checked, found) => {
       if (activeSearch?.searchId !== searchId) return;
+      lifecycle.transition({ kind: 'query-progress', sessionId: searchId, checked, found });
       broadcast({ type: 'search:progress', searchId, checked, found } satisfies WSMessage);
     });
 
@@ -164,6 +281,7 @@ async function runSearch(searchId: string, code: string, ctrl: AbortController):
       ),
     };
     saveSnapshotSync(msg);
+    lifecycle.transition({ kind: 'tree-resolved', sessionId: searchId });
     broadcast(msg);
     if (activeSearch?.searchId === searchId) activeSearch = null;
   } catch (err) {
@@ -181,12 +299,14 @@ async function runSearch(searchId: string, code: string, ctrl: AbortController):
         speciesConfig: applyModifiers(resolveSpecies(''), computeModifiers(undefined)),
       };
       saveSnapshotSync(msg);
+      lifecycle.transition({ kind: 'tree-resolved', sessionId: searchId });
       broadcast(msg);
       activeSearch = null;
       return;
     }
 
     const reason = err instanceof LookupError ? err.reason : 'timeout';
+    lifecycle.transition({ kind: 'search-failed', sessionId: searchId });
     broadcast({ type: 'search:failed', searchId, reason } satisfies WSMessage);
     activeSearch = null;
   }

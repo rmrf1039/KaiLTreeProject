@@ -116,8 +116,12 @@ export class Scene {
   private groundSx: Float32Array;
   private groundSy: Float32Array;
   private groundAlpha: Float32Array;
+  // Caps tree height as a fraction of canvas height. Default 0.78 keeps the
+  // user-tree's leaf tiles readable; the meta-tree opts into a larger value
+  // so the community archive reads as the centerpiece on the display.
+  private maxHeightFraction: number;
 
-  constructor(canvas: HTMLCanvasElement, data: BuildResult) {
+  constructor(canvas: HTMLCanvasElement, data: BuildResult, opts?: { maxHeightFraction?: number }) {
     this.canvas = canvas;
     const ctx = canvas.getContext('2d', { alpha: true });
     if (!ctx) throw new Error('Canvas 2d context unavailable');
@@ -133,6 +137,8 @@ export class Scene {
     this.leafCount = data.leafCount;
     this.leafCap = data.leafCount;
     this.bounds = data.bounds;
+
+    this.maxHeightFraction = opts?.maxHeightFraction ?? 0.78;
 
     this.branchParents = data.branchParents;
     this.branchOriginX = data.branchOriginX;
@@ -335,8 +341,8 @@ export class Scene {
     const padding = 60;
     const treeW = Math.max(1, this.bounds.maxX - this.bounds.minX);
     const treeH = Math.max(1, this.bounds.maxY - this.bounds.minY);
-    // Cap height to 78% of canvas so tiles stay large enough to read
-    const maxH = canvas.height * 0.78;
+    // Cap height as a configurable fraction of canvas — see maxHeightFraction.
+    const maxH = canvas.height * this.maxHeightFraction;
     const scale =
       Math.min((canvas.width - 2 * padding) / treeW, maxH / treeH);
     const cx = canvas.width / 2;

@@ -2,11 +2,14 @@ import type { ProductionRule, SpeciesConfig } from '../../../shared/src/species/
 import { Xorshift32 } from './rng';
 
 // Engine-level resource caps. CAPS clamps config values; CAPS is never on the wire.
-// `iterations` is a species property — not capped here.
+// `iterations` is a species property — not capped here. The leaves/segments
+// caps drive how dense a tree can render — bumping them lets the meta-tree
+// (community archive) hold more pictures at once. Per-frame budget in
+// scene.ts adapts via downsampling so this is safe under perf pressure.
 export const CAPS = {
   maxStringLength: 10_000,
-  maxSegments: 500,
-  maxLeaves: 160,
+  maxSegments: 800,
+  maxLeaves: 320,
   maxDepth: 8,
 } as const;
 

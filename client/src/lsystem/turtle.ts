@@ -157,7 +157,14 @@ export function walk(
       if (expanded[i + 1] !== '[') {
         len *= walkParams.trunkContraction;
       }
-    } else if (c === 'X') {
+    } else if (c === 'X' || c === 'L') {
+      // Both X and L produce a leaf at the turtle's current position. They
+      // differ only in the grammar: X is rule-expanded into substructures,
+      // so any X surviving to the final string is at a *branch tip*. L is
+      // never expanded (no rule matches it), so rules can sprinkle L's into
+      // expansions to place leaves at intermediate / interior positions —
+      // useful for filling the bare center of a tree where every branch
+      // would otherwise grow leaves only at its outermost point.
       if (leafCount < CAPS.maxLeaves) {
         const o = leafCount * LEAF_STRIDE;
         const slot = rng.int(atlasMeta.atlasSlots);

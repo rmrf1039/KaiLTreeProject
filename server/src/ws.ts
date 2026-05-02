@@ -2,6 +2,7 @@ import type { IncomingMessage } from 'node:http';
 import { WebSocket, WebSocketServer } from 'ws';
 import type { ClientRole, WSMessage } from '../../shared/src/types.js';
 import { getCurrentTree } from './state.js';
+import { CLIENT_DISPATCHABLE_INTENTS, lifecycle } from './lifecycle.js';
 
 type Client = WebSocket & { __role: ClientRole; __alive: boolean; __missedPongs: number };
 
@@ -31,30 +32,33 @@ export function broadcast(msg: WSMessage, opts: { role?: ClientRole } = {}): voi
   }
 }
 
-function sendSnapshot(c: Client): void {
-  const snap: WSMessage = {
+function snapshotMessage(): WSMessage {
+  return {
     type: 'snapshot',
     currentTree: getCurrentTree(),
+    lifecycle: lifecycle.getState(),
     inputs: countByRole('input'),
     displays: countByRole('display'),
   };
-  c.send(JSON.stringify(snap));
+}
+
+function sendSnapshot(c: Client): void {
+  c.send(JSON.stringify(snapshotMessage()));
 }
 
 function broadcastPresence(): void {
-  const msg: WSMessage = {
-    type: 'snapshot',
-    currentTree: getCurrentTree(),
-    inputs: countByRole('input'),
-    displays: countByRole('display'),
-  };
-  const payload = JSON.stringify(msg);
+  const payload = JSON.stringify(snapshotMessage());
   for (const c of clients) {
     if (c.readyState === WebSocket.OPEN) c.send(payload);
   }
 }
 
 export function attachWebSocket(wss: WebSocketServer): void {
+  // Lifecycle transitions go to all clients so both views stay in sync with the FSM.
+  lifecycle.subscribe((state) => {
+    broadcast({ type: 'lifecycle:transition', state });
+  });
+
   wss.on('connection', (raw, req) => {
     const ws = raw as Client;
     ws.__role = roleFromRequest(req);
@@ -81,7 +85,14 @@ export function attachWebSocket(wss: WebSocketServer): void {
       if (parsed.type === 'ping') {
         ws.send(JSON.stringify({ type: 'pong' } satisfies WSMessage));
       } else if (parsed.type === 'display:rendering') {
+        // Surface render-ack to inputs (existing UX) and advance the FSM.
         broadcast(parsed, { role: 'input' });
+        lifecycle.transition({ kind: 'render-started', sessionId: parsed.searchId });
+      } else if (parsed.type === 'lifecycle:dispatch') {
+        // Whitelist: only consent + capture-failed may originate from a client.
+        if (CLIENT_DISPATCHABLE_INTENTS.has(parsed.intent.kind)) {
+          lifecycle.transition(parsed.intent);
+        }
       }
     });
 

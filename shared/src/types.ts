@@ -26,13 +26,36 @@ export type SearchFailureReason =
   | 'timeout'
   | 'canceled';
 
+export type LifecycleState =
+  | { kind: 'idle' }
+  | { kind: 'querying'; sessionId: string; code: string; checked: number; found: number }
+  | { kind: 'generating'; sessionId: string; code: string }
+  | { kind: 'prompting'; sessionId: string; code: string; deadlineEpochMs: number }
+  | { kind: 'archiving'; sessionId: string; code: string; deadlineEpochMs: number }
+  | { kind: 'resetting'; sessionId: string };
+
+export type LifecycleIntent =
+  | { kind: 'submit'; code: string }
+  | { kind: 'query-progress'; sessionId: string; checked: number; found: number }
+  | { kind: 'tree-resolved'; sessionId: string }
+  | { kind: 'render-started'; sessionId: string }
+  | { kind: 'consent:granted'; sessionId: string }
+  | { kind: 'consent:denied'; sessionId: string }
+  | { kind: 'capture-uploaded'; sessionId: string }
+  | { kind: 'capture-failed'; sessionId: string }
+  | { kind: 'search-failed'; sessionId: string }
+  | { kind: 'timeout'; sessionId: string };
+
 export type WSMessage =
-  | { type: 'snapshot'; currentTree: TreeReadyMessage | null; inputs: number; displays: number }
+  | { type: 'snapshot'; currentTree: TreeReadyMessage | null; lifecycle: LifecycleState; inputs: number; displays: number }
   | { type: 'search:started'; searchId: string; code: string }
   | { type: 'search:progress'; searchId: string; checked: number; found: number }
   | { type: 'search:failed'; searchId: string; reason: SearchFailureReason }
   | { type: 'tree-ready'; searchId: string; code: string; seed: number; trees: TreeRecord[]; fallbackSlots: number[]; speciesConfig: SpeciesConfig }
   | { type: 'display:rendering'; searchId: string }
+  | { type: 'lifecycle:transition'; state: LifecycleState }
+  | { type: 'lifecycle:dispatch'; intent: LifecycleIntent }
+  | { type: 'meta-tree:updated' }
   | { type: 'ping' }
   | { type: 'pong' };
 
