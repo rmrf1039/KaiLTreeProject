@@ -10,7 +10,23 @@ const META_PATH = path.resolve(__dirname, '../data/tree_registry.meta.json');
 export type RegistryRecord = {
   treeId: string;
   dist: string;
+  region: string;
+  regionRemark: string;
+  treeType: string;
+  diameter: number | null;
+  treeHeight: number | null;
+  surveyDate: string;
+  twd97x: number | null;
+  twd97y: number | null;
 };
+
+function parseNum(v: unknown): number | null {
+  if (v === undefined || v === null) return null;
+  const s = String(v).trim();
+  if (s === '') return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
 
 export type RegistryMeta = {
   rowCount: number;
@@ -39,6 +55,14 @@ export function loadRegistry(): { records: RegistryRecord[]; meta: RegistryMeta 
     .map<RegistryRecord>((r) => ({
       treeId: String(r.TreeID).trim(),
       dist: String(r.Dist).trim(),
+      region: String(r.Region ?? '').trim(),
+      regionRemark: String(r.RegionRemark ?? '').trim(),
+      treeType: String(r.TreeType ?? '').trim(),
+      diameter: parseNum(r.Diameter),
+      treeHeight: parseNum(r.TreeHeight),
+      surveyDate: String(r.SurveyDate ?? '').trim(),
+      twd97x: parseNum(r.TWD97X),
+      twd97y: parseNum(r.TWD97Y),
     }));
   rows.sort((a, b) => {
     if (a.dist !== b.dist) return a.dist < b.dist ? -1 : 1;

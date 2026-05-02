@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { TreeReadyMessage } from '../../../shared/src/types';
+import type { TreeReadyMessage, TreeRecord } from '../../../shared/src/types';
 import { generateFallbackLeaves } from '../lsystem/fallback';
 import { Scene } from '../lsystem/scene';
 import type { BuildMsg, BuildResult } from '../lsystem/worker';
 import { useWebSocket } from '../ws';
+import { TreeInfoModal } from './TreeInfoModal';
 import './DisplayPage.css';
 
 const ATLAS_SIZE = 2048;
@@ -21,6 +22,8 @@ export function DisplayPage() {
   const [status, setStatus] = useState<DisplayStatus>('connecting');
   const [lastCode, setLastCode] = useState<string | null>(null);
   const [errMsg, setErrMsg] = useState<string | null>(null);
+  const [currentTrees, setCurrentTrees] = useState<TreeRecord[]>([]);
+  const [selectedTree, setSelectedTree] = useState<TreeRecord | null>(null);
   const { connState, subscribe, send } = useWebSocket('display');
 
   useEffect(() => {
@@ -77,6 +80,8 @@ export function DisplayPage() {
       setStatus('loading');
       setLastCode(msg.code);
       setErrMsg(null);
+      setCurrentTrees(msg.trees);
+      setSelectedTree(null);
 
       if (!fallbacksRef.current) {
         fallbacksRef.current = await generateFallbackLeaves(NUM_SLOTS, 256);
@@ -195,15 +200,27 @@ export function DisplayPage() {
     [],
   );
 
+  const firstTree = currentTrees[0] ?? null;
+  const canOpenModal = status === 'rendering' && firstTree !== null;
+
   return (
     <div className="display">
-      <canvas ref={canvasRef} className="fade-in" />
+      <canvas
+        ref={canvasRef}
+        className={`fade-in${canOpenModal ? ' clickable' : ''}`}
+        onClick={() => {
+          if (canOpenModal) setSelectedTree(firstTree);
+        }}
+      />
       <div className="display-overlay">
         <span className={`dot ${connState}`} />
         <span>{status}</span>
         {lastCode ? <span className="code">{lastCode}</span> : null}
         {errMsg ? <span className="err">· {errMsg}</span> : null}
       </div>
+      {selectedTree ? (
+        <TreeInfoModal tree={selectedTree} onClose={() => setSelectedTree(null)} />
+      ) : null}
     </div>
   );
 }

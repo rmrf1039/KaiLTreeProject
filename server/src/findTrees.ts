@@ -25,6 +25,14 @@ function toTreeRecord(rec: RegistryRecord): TreeRecord {
   return {
     treeId: rec.treeId,
     dist: rec.dist,
+    region: rec.region,
+    regionRemark: rec.regionRemark,
+    treeType: rec.treeType,
+    diameter: rec.diameter,
+    treeHeight: rec.treeHeight,
+    surveyDate: rec.surveyDate,
+    twd97x: rec.twd97x,
+    twd97y: rec.twd97y,
     proxyUrl: `/proxy/tree-image/${encodeURIComponent(rec.dist)}/${encodeURIComponent(rec.treeId)}.jpg`,
   };
 }

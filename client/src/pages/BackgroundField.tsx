@@ -13,7 +13,12 @@ type Particle = {
   depth: number;
 };
 
-const PARTICLE_COUNT = 380;
+const PARTICLE_COUNT = 750;
+const EXCLUSION_HALF_W = 210;
+const EXCLUSION_HALF_H = 130;
+const EXCLUSION_BUFFER_PX = 40;
+const MAX_SPEED = 24;
+const PUSH_STRENGTH = 220;
 
 export function BackgroundField() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -29,6 +34,49 @@ export function BackgroundField() {
     let lastT = performance.now();
     const images: HTMLImageElement[] = [];
     let particles: Particle[] = [];
+    let clusters: Array<{ x: number; y: number; spread: number; weight: number }> = [];
+
+    function gaussian(): number {
+      const u = Math.random() || 1e-9;
+      const v = Math.random();
+      return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+    }
+
+    function buildClusters(): void {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const cx = w / 2;
+      const cy = h / 2;
+      const n = 5 + Math.floor(Math.random() * 4);
+      clusters = [];
+      for (let i = 0; i < n; i++) {
+        let x = 0;
+        let y = 0;
+        for (let tries = 0; tries < 8; tries++) {
+          x = Math.random() * w;
+          y = Math.random() * h;
+          if (Math.abs(x - cx) >= EXCLUSION_HALF_W || Math.abs(y - cy) >= EXCLUSION_HALF_H) break;
+        }
+        const r = Math.random();
+        clusters.push({
+          x,
+          y,
+          spread: 80 + Math.random() * 200,
+          weight: 0.45 + Math.pow(r, 0.75) * 3.0,
+        });
+      }
+    }
+
+    function pickCluster(): { x: number; y: number; spread: number; weight: number } {
+      let total = 0;
+      for (const c of clusters) total += c.weight;
+      let r = Math.random() * total;
+      for (const c of clusters) {
+        r -= c.weight;
+        if (r <= 0) return c;
+      }
+      return clusters[clusters.length - 1]!;
+    }
 
     function resize(): void {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -45,18 +93,38 @@ export function BackgroundField() {
       const w = window.innerWidth;
       const h = window.innerHeight;
       const depth = Math.random();
-      const size = 36 + depth * 96;
-      const speed = 4 + (1 - depth) * 10;
+      const size = 30 + depth * 14;
+      const speed = 3 + (1 - depth) * 8;
       const angle = Math.random() * Math.PI * 2;
+      const cx = w / 2;
+      const cy = h / 2;
+      const useCluster = Math.random() < 0.85 && clusters.length > 0;
+      let x = 0;
+      let y = 0;
+      for (let tries = 0; tries < 16; tries++) {
+        if (useCluster) {
+          const c = pickCluster();
+          x = c.x + gaussian() * c.spread;
+          y = c.y + gaussian() * c.spread * (0.7 + Math.random() * 0.6);
+        } else {
+          x = Math.random() * w;
+          y = Math.random() * h;
+        }
+        const inX = x >= -50 && x <= w + 50;
+        const inY = y >= -50 && y <= h + 50;
+        const outsideExclusion =
+          Math.abs(x - cx) >= EXCLUSION_HALF_W || Math.abs(y - cy) >= EXCLUSION_HALF_H;
+        if (inX && inY && outsideExclusion) break;
+      }
       return {
         imgIdx: Math.floor(Math.random() * Math.max(1, images.length)),
-        x: Math.random() * w,
-        y: Math.random() * h,
+        x,
+        y,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
         size,
-        rot: (Math.random() - 0.5) * 0.35,
-        vrot: (Math.random() - 0.5) * 0.04,
+        rot: 0,
+        vrot: 0,
         alpha: 0.35 + depth * 0.55,
         depth,
       };
@@ -83,10 +151,64 @@ export function BackgroundField() {
         return;
       }
 
+      const cx = w / 2;
+      const cy = h / 2;
+
       for (const p of particles) {
+        const dx = p.x - cx;
+        const dy = p.y - cy;
+        const adx = Math.abs(dx);
+        const ady = Math.abs(dy);
+        const ox = Math.max(0, adx - EXCLUSION_HALF_W);
+        const oy = Math.max(0, ady - EXCLUSION_HALF_H);
+        const outDist = Math.hypot(ox, oy);
+
+        if (outDist === 0) {
+          const dxToEdge = EXCLUSION_HALF_W - adx;
+          const dyToEdge = EXCLUSION_HALF_H - ady;
+          let ux: number;
+          let uy: number;
+          if (dxToEdge < dyToEdge) {
+            ux = Math.sign(dx) || 1;
+            uy = 0;
+          } else {
+            ux = 0;
+            uy = Math.sign(dy) || 1;
+          }
+          p.vx += ux * PUSH_STRENGTH * dt;
+          p.vy += uy * PUSH_STRENGTH * dt;
+        } else if (outDist < EXCLUSION_BUFFER_PX) {
+          const ux = (Math.sign(dx) * ox) / outDist;
+          const uy = (Math.sign(dy) * oy) / outDist;
+          const strength = (EXCLUSION_BUFFER_PX - outDist) / EXCLUSION_BUFFER_PX;
+          p.vx += ux * PUSH_STRENGTH * strength * dt;
+          p.vy += uy * PUSH_STRENGTH * strength * dt;
+        }
+
+        const speed = Math.hypot(p.vx, p.vy);
+        if (speed > MAX_SPEED) {
+          p.vx *= MAX_SPEED / speed;
+          p.vy *= MAX_SPEED / speed;
+        }
+
         p.x += p.vx * dt;
         p.y += p.vy * dt;
-        p.rot += p.vrot * dt;
+
+        const dx2 = p.x - cx;
+        const dy2 = p.y - cy;
+        const adx2 = Math.abs(dx2);
+        const ady2 = Math.abs(dy2);
+        if (adx2 < EXCLUSION_HALF_W && ady2 < EXCLUSION_HALF_H) {
+          const dxToEdge = EXCLUSION_HALF_W - adx2;
+          const dyToEdge = EXCLUSION_HALF_H - ady2;
+          if (dxToEdge < dyToEdge) {
+            p.x = cx + Math.sign(dx2 || 1) * EXCLUSION_HALF_W;
+            if ((p.vx > 0) !== (dx2 > 0)) p.vx = 0;
+          } else {
+            p.y = cy + Math.sign(dy2 || 1) * EXCLUSION_HALF_H;
+            if ((p.vy > 0) !== (dy2 > 0)) p.vy = 0;
+          }
+        }
 
         const margin = p.size;
         if (p.x < -margin) p.x = w + margin;
@@ -97,21 +219,27 @@ export function BackgroundField() {
         const img = images[p.imgIdx % images.length]!;
         if (!img.complete || img.naturalWidth === 0) continue;
 
-        ctx!.save();
-        ctx!.globalAlpha = p.alpha;
-        ctx!.translate(p.x, p.y);
-        ctx!.rotate(p.rot);
         const half = p.size / 2;
-        ctx!.drawImage(img, -half, -half, p.size, p.size);
-        ctx!.restore();
+        const x = p.x - half;
+        const y = p.y - half;
+        ctx!.drawImage(img, x, y, p.size, p.size);
+        ctx!.strokeStyle = '#ffffff';
+        ctx!.lineWidth = 0.75;
+        ctx!.strokeRect(x + 0.375, y + 0.375, p.size - 0.75, p.size - 0.75);
       }
 
       raf = requestAnimationFrame(draw);
     }
 
     resize();
+    buildClusters();
     spawnAll();
-    window.addEventListener('resize', resize);
+    function onResize(): void {
+      resize();
+      buildClusters();
+      spawnAll();
+    }
+    window.addEventListener('resize', onResize);
 
     raf = requestAnimationFrame(draw);
 
@@ -150,7 +278,7 @@ export function BackgroundField() {
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
-      window.removeEventListener('resize', resize);
+      window.removeEventListener('resize', onResize);
     };
   }, []);
 

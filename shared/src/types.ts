@@ -3,6 +3,14 @@ export type ClientRole = 'input' | 'display';
 export type TreeRecord = {
   treeId: string;
   dist: string;
+  region: string;
+  regionRemark: string;
+  treeType: string;
+  diameter: number | null;
+  treeHeight: number | null;
+  surveyDate: string;
+  twd97x: number | null;
+  twd97y: number | null;
   proxyUrl: string;
 };
 
