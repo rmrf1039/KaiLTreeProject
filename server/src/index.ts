@@ -45,8 +45,12 @@ function hash32(s: string): number {
 }
 
 await ensureCacheDir();
-loadSnapshot();
 
+// Registry must load before snapshot so snapshot rehydration sees the species
+// stats it needs to compute modifiers. computeModifiers is registry-tolerant
+// so the order isn't strictly required, but loading registry first means a
+// rehydrated snapshot reflects the latest stress signal from the moment it
+// arrives — no second pass needed.
 let registryLoaded = false;
 try {
   loadRegistry();
@@ -55,6 +59,8 @@ try {
 } catch (err) {
   console.warn(`[kai] Registry NOT loaded: ${(err as Error).message}`);
 }
+
+loadSnapshot();
 
 const app = express();
 const httpServer = createServer(app);
