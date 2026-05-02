@@ -128,7 +128,7 @@ export function DisplayPage() {
         images: bitmaps,
         atlasSize: ATLAS_SIZE,
         variantsPerSlot: VARIANTS_PER_SLOT,
-        params: { initialLen: 10, lenDecay: 0.78, angleDeg: 45, jitterDeg: 5 },
+        speciesConfig: msg.speciesConfig,
       };
 
       const result = await new Promise<BuildResult>((resolve, reject) => {

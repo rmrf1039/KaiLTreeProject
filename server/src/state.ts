@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { TreeReadyMessage } from '../../shared/src/types.js';
+import { resolveSpecies } from './species/resolver.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CACHE_DIR = path.resolve(__dirname, '../../cache');
@@ -15,6 +16,10 @@ export function loadSnapshot(): void {
     const raw = fs.readFileSync(SNAPSHOT_PATH, 'utf8');
     const parsed = JSON.parse(raw) as TreeReadyMessage;
     if (parsed?.type === 'tree-ready' && Array.isArray(parsed.trees)) {
+      // Re-resolve speciesConfig from the persisted treeType so snapshots
+      // written before this field existed (or under a stale registry) are
+      // brought up to date by the single source of truth.
+      parsed.speciesConfig = resolveSpecies(parsed.trees[0]?.treeType ?? '');
       currentTree = parsed;
     }
   } catch (err) {

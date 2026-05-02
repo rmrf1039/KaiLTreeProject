@@ -1,3 +1,5 @@
+import type { SpeciesConfig } from './species/types.js';
+
 export type ClientRole = 'input' | 'display';
 
 export type TreeRecord = {
@@ -29,7 +31,7 @@ export type WSMessage =
   | { type: 'search:started'; searchId: string; code: string }
   | { type: 'search:progress'; searchId: string; checked: number; found: number }
   | { type: 'search:failed'; searchId: string; reason: SearchFailureReason }
-  | { type: 'tree-ready'; searchId: string; code: string; seed: number; trees: TreeRecord[]; fallbackSlots: number[] }
+  | { type: 'tree-ready'; searchId: string; code: string; seed: number; trees: TreeRecord[]; fallbackSlots: number[]; speciesConfig: SpeciesConfig }
   | { type: 'display:rendering'; searchId: string }
   | { type: 'ping' }
   | { type: 'pong' };

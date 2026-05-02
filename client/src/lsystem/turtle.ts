@@ -1,3 +1,4 @@
+import type { WalkParams } from '../../../shared/src/species/types';
 import { SEG_STRIDE, LEAF_STRIDE } from '../../../shared/src/types';
 import { CAPS } from './grammar';
 import { Xorshift32 } from './rng';
@@ -18,16 +19,17 @@ export type Geometry = {
   branchCount: number;
 };
 
-export type WalkParams = {
-  initialLen: number;
-  lenDecay: number;
-  angleDeg: number;
-  jitterDeg: number;
+export type AtlasMeta = {
   atlasSlots: number;
   variantsPerSlot: number;
 };
 
-export function walk(expanded: string, seed: number, params: WalkParams): Geometry {
+export function walk(
+  expanded: string,
+  seed: number,
+  walkParams: WalkParams,
+  atlasMeta: AtlasMeta,
+): Geometry {
   const rng = new Xorshift32(seed ^ 0x9e3779b9);
 
   const segments = new Float32Array(CAPS.maxSegments * SEG_STRIDE);
@@ -38,7 +40,7 @@ export function walk(expanded: string, seed: number, params: WalkParams): Geomet
   let x = 0;
   let y = 0;
   let ang = -Math.PI / 2;
-  let len = params.initialLen;
+  let len = walkParams.initialLength;
   let depth = 0;
   // 0 = left branch, 1 = middle/trunk, 2 = right branch.
   // Determines fan-layered z-order at each branching point.
@@ -56,8 +58,10 @@ export function walk(expanded: string, seed: number, params: WalkParams): Geomet
   const branchOriginYList: number[] = [0];
   const branchDepthList: number[] = [0];
 
-  const angleStep = (params.angleDeg * Math.PI) / 180;
-  const jitter = (params.jitterDeg * Math.PI) / 180;
+  const angleStep = (walkParams.angleDeg * Math.PI) / 180;
+  const jitter = (walkParams.jitterDeg * Math.PI) / 180;
+  // Engine-level safety floor — config can request a shallower tree but never deeper.
+  const depthCap = Math.min(walkParams.maxDepth, CAPS.maxDepth);
 
   type StackFrame = [
     x: number,
@@ -114,15 +118,15 @@ export function walk(expanded: string, seed: number, params: WalkParams): Geomet
       const nextSide = next === '+' ? 0 : next === '-' ? 2 : 1;
       const parentBranch = branchId;
       stack.push([x, y, ang, len, depth, side, widthFactor, parentBranch]);
-      if (depth < CAPS.maxDepth) {
-        len *= params.lenDecay;
+      if (depth < depthCap) {
+        len *= walkParams.lengthDecay;
         depth++;
       }
       side = nextSide;
-      // Child branch gets a width factor in [0.88, 1.0] of the parent —
-      // guarantees a child is never wider than its parent, while still
-      // letting siblings differ slightly so the tree looks diverse.
-      widthFactor *= 0.88 + rng.next() * 0.12;
+      // Child branch gets a width factor in [min, min+span] of the parent.
+      // The RNG draw is unconditional — same number of draws regardless of
+      // whether the depth cap stopped the descent above.
+      widthFactor *= walkParams.childWidthMin + rng.next() * walkParams.childWidthSpan;
       // Register the new child branch: its origin is the current turtle
       // position (where the `[` sits), parent is the branch we're leaving.
       branchId = nextBranchId++;
@@ -146,16 +150,15 @@ export function walk(expanded: string, seed: number, params: WalkParams): Geomet
       // sibling branch `[`), shorten the trunk segment length so each
       // successive splitting point on the trunk sits closer to the last —
       // lower branches get more breathing room than upper ones.
-      // Mild factor so upper branches don't cascade into invisibly-small tiles.
       if (expanded[i + 1] !== '[') {
-        len *= 0.92;
+        len *= walkParams.trunkContraction;
       }
     } else if (c === 'X') {
       if (leafCount < CAPS.maxLeaves) {
         const o = leafCount * LEAF_STRIDE;
-        const slot = rng.int(params.atlasSlots);
-        const variant = rng.int(params.variantsPerSlot);
-        const atlasIdx = slot * params.variantsPerSlot + variant;
+        const slot = rng.int(atlasMeta.atlasSlots);
+        const variant = rng.int(atlasMeta.variantsPerSlot);
+        const atlasIdx = slot * atlasMeta.variantsPerSlot + variant;
         leaves[o] = x;
         leaves[o + 1] = y;
         leaves[o + 2] = ang + rng.range(-0.6, 0.6);

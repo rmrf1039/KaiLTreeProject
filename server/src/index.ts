@@ -15,6 +15,7 @@ import { loadRegistry, recordCount } from './registry.js';
 import { LookupError, findTrees } from './findTrees.js';
 import { ensureCacheDir, handleCachedImage, handleTreeImage, listCachedImages } from './imageProxy.js';
 import { getCurrentTree, loadSnapshot, saveSnapshotSync } from './state.js';
+import { resolveSpecies } from './species/resolver.js';
 import { attachWebSocket, broadcast, countByRole } from './ws.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -149,6 +150,7 @@ async function runSearch(searchId: string, code: string, ctrl: AbortController):
       seed,
       trees,
       fallbackSlots,
+      speciesConfig: resolveSpecies(trees[0]?.treeType ?? ''),
     };
     saveSnapshotSync(msg);
     broadcast(msg);
@@ -165,6 +167,7 @@ async function runSearch(searchId: string, code: string, ctrl: AbortController):
         seed,
         trees: [],
         fallbackSlots: [0, 1, 2, 3, 4, 5, 6, 7, 8],
+        speciesConfig: resolveSpecies(''),
       };
       saveSnapshotSync(msg);
       broadcast(msg);

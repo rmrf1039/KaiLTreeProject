@@ -1,3 +1,4 @@
+import type { SpeciesConfig } from '../../../shared/src/species/types';
 import { buildAtlas, buildSegAtlas } from './atlas';
 import { expand } from './grammar';
 import { walk } from './turtle';
@@ -8,12 +9,7 @@ export type BuildMsg = {
   images: ImageBitmap[];
   atlasSize: number;
   variantsPerSlot: number;
-  params: {
-    initialLen: number;
-    lenDecay: number;
-    angleDeg: number;
-    jitterDeg: number;
-  };
+  speciesConfig: SpeciesConfig;
 };
 
 export type BuildResult = {
@@ -46,13 +42,9 @@ self.addEventListener('message', async (event: MessageEvent<BuildMsg>) => {
   if (!msg || msg.type !== 'build') return;
 
   try {
-    const { str, iterations } = expand(msg.seed);
+    const { str, iterations } = expand(msg.speciesConfig, msg.seed);
     const atlasSlots = Math.max(1, msg.images.length);
-    const geometry = walk(str, msg.seed, {
-      initialLen: msg.params.initialLen,
-      lenDecay: msg.params.lenDecay,
-      angleDeg: msg.params.angleDeg,
-      jitterDeg: msg.params.jitterDeg,
+    const geometry = walk(str, msg.seed, msg.speciesConfig.walk, {
       atlasSlots,
       variantsPerSlot: msg.variantsPerSlot,
     });
