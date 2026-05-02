@@ -29,7 +29,7 @@ function isFiniteNumber(v: unknown): v is number {
 function validateWalk(path: string, walk: SpeciesConfig['walk']): void {
   const fields: Array<keyof typeof walk> = [
     'initialLength', 'lengthDecay', 'angleDeg', 'jitterDeg',
-    'trunkContraction', 'childWidthMin', 'childWidthSpan', 'maxDepth',
+    'trunkContraction', 'childWidthMin', 'childWidthSpan', 'maxDepth', 'gravity',
   ];
   for (const f of fields) {
     if (!isFiniteNumber(walk[f])) throw new RegistryError(`${path}.${f}`, 'must be a finite number');
@@ -44,6 +44,12 @@ function validateWalk(path: string, walk: SpeciesConfig['walk']): void {
   if (walk.childWidthMin + walk.childWidthSpan > 1.5) throw new RegistryError(`${path}.childWidth`, 'min+span exceeds 1.5 — children would be wider than parents');
   if (!Number.isInteger(walk.maxDepth) || walk.maxDepth < 0 || walk.maxDepth > MAX_DEPTH_HARD) {
     throw new RegistryError(`${path}.maxDepth`, `must be an integer in [0, ${MAX_DEPTH_HARD}]`);
+  }
+  // Gravity in radians per F segment. ±0.5 rad/segment is already 28.6° per
+  // step — well past anything botanically plausible, so cap there as a
+  // sanity bound.
+  if (walk.gravity < -0.5 || walk.gravity > 0.5) {
+    throw new RegistryError(`${path}.gravity`, 'must be in [-0.5, 0.5] (radians per segment)');
   }
 }
 

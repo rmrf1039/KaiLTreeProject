@@ -27,6 +27,7 @@ export const DEFAULT_SPECIES_CONFIG: SpeciesConfig = {
     childWidthMin: 0.88,
     childWidthSpan: 0.12,
     maxDepth: 8,
+    gravity: 0,
   },
   asset: {
     segmentAspect: 1,

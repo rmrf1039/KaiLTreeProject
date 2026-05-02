@@ -103,6 +103,10 @@ export function walk(
       }
       x = x1;
       y = y1;
+      // Gravity bends the heading after each segment is laid down. Default
+      // 0 is bit-identity (`ang + 0 === ang` for finite doubles); non-zero
+      // values produce weeping/pendant branches that arc earthward.
+      ang += walkParams.gravity;
       if (x < minX) minX = x;
       if (x > maxX) maxX = x;
       if (y < minY) minY = y;

@@ -17,6 +17,10 @@ export type WalkParams = {
   childWidthMin: number;
   childWidthSpan: number;
   maxDepth: number;
+  // Per-segment angular drift in radians, applied after each F. Positive
+  // values bend branches downward over their length — drives weeping/pendant
+  // morphologies like Cassia fistula (阿勃勒). 0 = no gravity (default).
+  gravity: number;
 };
 
 // Rendering-only knobs. Engine never reads these — they ride through the

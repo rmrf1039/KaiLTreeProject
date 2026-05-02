@@ -106,27 +106,36 @@ const records = getRecords();
     `${baseFicus.walk.jitterDeg} → ${modFicus.walk.jitterDeg.toFixed(2)}`,
   );
 
-  // 阿勃勒 is one of the species still falling through to the default config,
-  // which omits stressResponse. Even with computeModifiers returning a real
-  // non-zero stress, applyModifiers must return the input untouched.
-  const aboleScreens = records.filter(
-    (r) => r.treeType === '阿勃勒' && r.diameter !== null && r.diameter > 0,
-  );
-  aboleScreens.sort((a, b) => (a.diameter ?? 0) - (b.diameter ?? 0));
-  const thinAbole = aboleScreens[0];
-  if (thinAbole) {
-    const base = resolveSpecies(thinAbole.treeType);
+  // 苦楝 falls through to the default config (its descriptive CSV row would
+  // need engine extensions we haven't shipped). Default omits stressResponse,
+  // so even a non-zero stress signal must return the config untouched.
+  const fallbackCandidates = ['苦楝', '芒果', '九芎'];
+  let testedFallback = false;
+  for (const treeType of fallbackCandidates) {
+    const base = resolveSpecies(treeType);
+    if (base.id !== 'default') continue;
+    const same = records.filter(
+      (r) => r.treeType === treeType && r.diameter !== null && r.diameter > 0,
+    );
+    same.sort((a, b) => (a.diameter ?? 0) - (b.diameter ?? 0));
+    const thin = same[0];
+    if (!thin) continue;
+    const mods = computeModifiers({ ...thin, proxyUrl: '' });
+    const out = applyModifiers(base, mods);
     check(
-      '阿勃勒 falls through to default',
+      `${treeType} falls through to default`,
       base.id === 'default',
     );
-    const mods = computeModifiers({ ...thinAbole, proxyUrl: '' });
-    const out = applyModifiers(base, mods);
     check(
       'default config is unchanged by modifiers regardless of stress',
       out === base,
       `stress=${(mods.stress ?? 0).toFixed(3)}`,
     );
+    testedFallback = true;
+    break;
+  }
+  if (!testedFallback) {
+    check('found a default-fallback species to test', false, 'every candidate now resolves to a non-default config');
   }
 }
 
