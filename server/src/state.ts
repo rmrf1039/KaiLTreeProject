@@ -2,7 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { TreeReadyMessage } from '../../shared/src/types.js';
+import { applyModifiers } from '../../shared/src/species/modifiers.js';
 import { resolveSpecies } from './species/resolver.js';
+import { computeModifiers } from './species/stress.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CACHE_DIR = path.resolve(__dirname, '../../cache');
@@ -16,10 +18,14 @@ export function loadSnapshot(): void {
     const raw = fs.readFileSync(SNAPSHOT_PATH, 'utf8');
     const parsed = JSON.parse(raw) as TreeReadyMessage;
     if (parsed?.type === 'tree-ready' && Array.isArray(parsed.trees)) {
-      // Re-resolve speciesConfig from the persisted treeType so snapshots
-      // written before this field existed (or under a stale registry) are
-      // brought up to date by the single source of truth.
-      parsed.speciesConfig = resolveSpecies(parsed.trees[0]?.treeType ?? '');
+      // Re-resolve speciesConfig from the persisted treeType and re-apply
+      // modifiers so snapshots written before these fields existed (or under
+      // a stale registry / stress signal) are brought up to date by the
+      // single source of truth.
+      parsed.speciesConfig = applyModifiers(
+        resolveSpecies(parsed.trees[0]?.treeType ?? ''),
+        computeModifiers(parsed.trees[0]),
+      );
       currentTree = parsed;
     }
   } catch (err) {

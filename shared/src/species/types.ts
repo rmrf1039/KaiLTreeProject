@@ -29,6 +29,16 @@ export type AssetBinding = {
   leafSizeScale: number;
 };
 
+// Per-species response curve to environmental stress. All factors scale
+// linearly with `s ∈ [0,1]`. Damps multiply (1 - s*damp); gains add s*gain;
+// iterationDrop floors `s * drop` and subtracts (clamped to keep iterations ≥ 1).
+export type StressResponse = {
+  angleDamp: number;
+  lengthDamp: number;
+  jitterGain: number;
+  iterationDrop: number;
+};
+
 export type SpeciesConfig = {
   id: string;
   axiom: string;
@@ -36,4 +46,12 @@ export type SpeciesConfig = {
   rules: ProductionRule[];
   walk: WalkParams;
   asset: AssetBinding;
+  stressResponse?: StressResponse;
+};
+
+// External modifiers fed into the resolver pipeline. Composable, additive —
+// new fields land here and gain a corresponding `apply*` transform.
+export type Modifiers = {
+  // 0 = healthy, 1 = maximally stressed. Out-of-range values are clamped.
+  stress?: number;
 };
