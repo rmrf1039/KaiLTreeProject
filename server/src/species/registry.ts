@@ -1,5 +1,6 @@
 import type { SpeciesConfig } from '../../../shared/src/species/types.js';
 import { DEFAULT_SPECIES_CONFIG } from '../../../shared/src/species/defaults.js';
+import { validateRegistry } from './validate.js';
 
 export type SpeciesRegistryEntry = SpeciesConfig & {
   // Substrings (NFKC-lowercased) that, if found in the CSV `treeType` column,
@@ -256,3 +257,6 @@ export const SPECIES_REGISTRY: SpeciesRegistryEntry[] = [
   PALM_MONOPODIAL,
   { ...DEFAULT_SPECIES_CONFIG, matchPatterns: [] },
 ];
+
+// Boot-time check: a malformed entry crashes the import, not the renderer.
+validateRegistry(SPECIES_REGISTRY);
