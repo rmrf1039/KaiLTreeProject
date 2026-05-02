@@ -26,10 +26,26 @@ const CASES: Case[] = [
   { treeType: 'Terminalia mantaly', expectedId: 'pagoda-layered' },
   { treeType: 'Alstonia scholaris', expectedId: 'pagoda-layered' },
 
+  // pyramidal-conical
+  { treeType: '楓香', expectedId: 'pyramidal-conical' },
+  { treeType: 'Liquidambar formosana', expectedId: 'pyramidal-conical' },
+
+  // vase-spreading
+  { treeType: '大花紫薇', expectedId: 'vase-spreading' },
+  { treeType: '紫薇', expectedId: 'vase-spreading' },
+  { treeType: '臺灣欒樹', expectedId: 'vase-spreading' },
+  { treeType: '台灣欒樹', expectedId: 'vase-spreading' },
+  { treeType: 'Lagerstroemia speciosa', expectedId: 'vase-spreading' },
+  { treeType: 'Koelreuteria henryi', expectedId: 'vase-spreading' },
+
+  // palm-monopodial
+  { treeType: '大王椰子', expectedId: 'palm-monopodial' },
+  { treeType: '蒲葵', expectedId: 'palm-monopodial' },
+  { treeType: 'Roystonea regia', expectedId: 'palm-monopodial' },
+
   // unmatched → default
-  { treeType: '楓香', expectedId: 'default' },
-  { treeType: '臺灣欒樹', expectedId: 'default' },
   { treeType: '阿勃勒', expectedId: 'default' },
+  { treeType: '苦楝', expectedId: 'default' },
   { treeType: '', expectedId: 'default' },
   { treeType: 'unknown species', expectedId: 'default' },
 ];

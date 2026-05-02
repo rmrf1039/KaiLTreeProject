@@ -125,9 +125,134 @@ const PAGODA_LAYERED: SpeciesRegistryEntry = {
   },
 };
 
+// Pyramidal/conical silhouettes: Liquidambar formosana (楓香). A strong
+// central leader with horizontal lateral pairs at vertical intervals, plus
+// occasional single big laterals. Wider angles than default but no overlap
+// with spreading because the trunk continues straight from each X.
+const PYRAMIDAL_CONICAL: SpeciesRegistryEntry = {
+  id: 'pyramidal-conical',
+  matchPatterns: ['楓香', 'liquidambar'],
+  axiom: 'FFFFX',
+  iterations: 5,
+  rules: [
+    {
+      symbol: 'X',
+      variants: [
+        { weight: 0.55, expansion: 'FF[+X][-X]X' },
+        { weight: 0.225, expansion: 'FFF[++X]FFX' },
+        { weight: 0.225, expansion: 'FFF[--X]FFX' },
+      ],
+    },
+  ],
+  walk: {
+    initialLength: 10,
+    lengthDecay: 0.72,
+    angleDeg: 40,
+    jitterDeg: 5,
+    trunkContraction: 0.85,
+    childWidthMin: 0.82,
+    childWidthSpan: 0.12,
+    maxDepth: 8,
+  },
+  asset: {
+    segmentAspect: 0.95,
+    leafSizeScale: 1.0,
+  },
+  stressResponse: {
+    angleDamp: 0.20,
+    lengthDamp: 0.20,
+    jitterGain: 8,
+    iterationDrop: 1,
+  },
+};
+
+// Vase/rounded crowns with multi-trunk feel: Lagerstroemia speciosa (大花紫薇),
+// Koelreuteria henryi (臺灣欒樹), Lagerstroemia indica (紫薇). Splits early and
+// often, no trunk continuation in the dominant variant — produces a bushy
+// rounded canopy rather than a single-leader spire.
+const VASE_SPREADING: SpeciesRegistryEntry = {
+  id: 'vase-spreading',
+  matchPatterns: ['大花紫薇', '紫薇', '臺灣欒樹', '台灣欒樹', 'lagerstroemia', 'koelreuteria'],
+  axiom: 'FFFX',
+  iterations: 5,
+  rules: [
+    {
+      symbol: 'X',
+      variants: [
+        { weight: 0.40, expansion: 'F[+X][-X]X' },
+        { weight: 0.30, expansion: 'F[++X][-X][+X][--X]X' },
+        { weight: 0.30, expansion: 'FF[+X][-X]FX' },
+      ],
+    },
+  ],
+  walk: {
+    initialLength: 9,
+    lengthDecay: 0.78,
+    angleDeg: 35,
+    jitterDeg: 7,
+    trunkContraction: 0.85,
+    childWidthMin: 0.82,
+    childWidthSpan: 0.14,
+    maxDepth: 8,
+  },
+  asset: {
+    segmentAspect: 1.0,
+    leafSizeScale: 1.10,
+  },
+  stressResponse: {
+    angleDamp: 0.20,
+    lengthDamp: 0.18,
+    jitterGain: 8,
+    iterationDrop: 1,
+  },
+};
+
+// Monopodial palms: Roystonea regia (大王椰子), Livistona chinensis (蒲葵).
+// First non-branching topology in the registry. iterations=1, single-variant
+// rule, axiom carries the trunk; the rule fans out 5 leaf brackets at the
+// apex. Validates the engine handles morphologies far from the recursive
+// branching default — no engine changes needed, just config.
+const PALM_MONOPODIAL: SpeciesRegistryEntry = {
+  id: 'palm-monopodial',
+  matchPatterns: ['大王椰子', '蒲葵', 'roystonea', 'livistona'],
+  axiom: 'FFFFFFFFFFX',
+  iterations: 1,
+  rules: [
+    {
+      symbol: 'X',
+      variants: [
+        { weight: 1, expansion: '[++X][+X][X][-X][--X]' },
+      ],
+    },
+  ],
+  walk: {
+    initialLength: 9,
+    lengthDecay: 0.5,
+    angleDeg: 30,
+    jitterDeg: 4,
+    trunkContraction: 1.0,
+    childWidthMin: 0.6,
+    childWidthSpan: 0.05,
+    maxDepth: 8,
+  },
+  asset: {
+    segmentAspect: 0.78,
+    leafSizeScale: 1.35,
+  },
+  stressResponse: {
+    angleDamp: 0.10,
+    lengthDamp: 0.30,
+    jitterGain: 5,
+    iterationDrop: 0,
+  },
+};
+
 export const SPECIES_REGISTRY: SpeciesRegistryEntry[] = [
   SPREADING_BROADLEAF,
   COLUMNAR_NARROW,
   PAGODA_LAYERED,
+  PYRAMIDAL_CONICAL,
+  VASE_SPREADING,
+  PALM_MONOPODIAL,
   { ...DEFAULT_SPECIES_CONFIG, matchPatterns: [] },
 ];

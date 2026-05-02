@@ -106,13 +106,26 @@ const records = getRecords();
     `${baseFicus.walk.jitterDeg} → ${modFicus.walk.jitterDeg.toFixed(2)}`,
   );
 
-  const fengxiang = records.find((r) => r.treeType === '楓香' && r.diameter !== null && r.diameter > 0);
-  if (fengxiang) {
-    const baseDefault = resolveSpecies(fengxiang.treeType);
-    const modDefault = applyModifiers(baseDefault, computeModifiers({ ...fengxiang, proxyUrl: '' }));
+  // 阿勃勒 is one of the species still falling through to the default config,
+  // which omits stressResponse. Even with computeModifiers returning a real
+  // non-zero stress, applyModifiers must return the input untouched.
+  const aboleScreens = records.filter(
+    (r) => r.treeType === '阿勃勒' && r.diameter !== null && r.diameter > 0,
+  );
+  aboleScreens.sort((a, b) => (a.diameter ?? 0) - (b.diameter ?? 0));
+  const thinAbole = aboleScreens[0];
+  if (thinAbole) {
+    const base = resolveSpecies(thinAbole.treeType);
     check(
-      'default species (楓香) is unchanged by modifiers',
-      modDefault === baseDefault,
+      '阿勃勒 falls through to default',
+      base.id === 'default',
+    );
+    const mods = computeModifiers({ ...thinAbole, proxyUrl: '' });
+    const out = applyModifiers(base, mods);
+    check(
+      'default config is unchanged by modifiers regardless of stress',
+      out === base,
+      `stress=${(mods.stress ?? 0).toFixed(3)}`,
     );
   }
 }
