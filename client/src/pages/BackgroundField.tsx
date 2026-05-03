@@ -14,9 +14,12 @@ type Particle = {
 };
 
 const PARTICLE_COUNT = 750;
-const EXCLUSION_HALF_W = 210;
-const EXCLUSION_HALF_H = 130;
-const EXCLUSION_BUFFER_PX = 40;
+// Half-extents of the rectangular keep-out zone centered on the canvas.
+// Sized to wrap the input-card (logo + rule + prompt + OTP + status) plus
+// its padding so background photos don't touch the input group.
+const EXCLUSION_HALF_W = 180;
+const EXCLUSION_HALF_H = 195;
+const EXCLUSION_BUFFER_PX = 24;
 const MAX_SPEED = 24;
 const PUSH_STRENGTH = 220;
 
