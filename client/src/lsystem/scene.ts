@@ -759,7 +759,8 @@ export class Scene {
     const rx = crownPx * 0.48 * growT;
     // Viewed from a low camera angle (horizon mid-canvas, plant row near
     // bottom) — shadow is strongly foreshortened along the view axis.
-    const ry = rx * 0.22;
+    // Lowered (was 0.22) so the shadow sits as a thinner sliver on the ground.
+    const ry = rx * 0.12;
     // Nudge slightly forward of the trunk base so it reads as shadow on
     // the ground in front of the tree, not a blob underneath it.
     const oy = ry * 0.25;
@@ -768,10 +769,12 @@ export class Scene {
     ctx.translate(cx, cy + oy);
     ctx.scale(1, ry / rx);
     const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
-    const alpha = 0.30 * growT;
-    grad.addColorStop(0, `rgba(40, 48, 60, ${alpha})`);
-    grad.addColorStop(0.55, `rgba(40, 48, 60, ${alpha * 0.4})`);
-    grad.addColorStop(1, 'rgba(40, 48, 60, 0)');
+    // Softened relative to the original (was 0.30 / 40,48,60) but kept dark
+    // enough to read as a grounded shadow rather than a faint smudge.
+    const alpha = 0.20 * growT;
+    grad.addColorStop(0, `rgba(60, 70, 80, ${alpha})`);
+    grad.addColorStop(0.55, `rgba(60, 70, 80, ${alpha * 0.4})`);
+    grad.addColorStop(1, 'rgba(60, 70, 80, 0)');
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.arc(0, 0, rx, 0, Math.PI * 2);

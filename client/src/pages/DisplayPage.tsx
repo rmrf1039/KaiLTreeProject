@@ -319,12 +319,20 @@ export function DisplayPage() {
     });
   }, [subscribe, renderTreeReady, renderMetaTree]);
 
-  // Every time the lifecycle returns to idle, refresh the meta-tree. This
-  // unconditionally picks up archive entries written during the just-ended
-  // session — the captured photo appears as a leaf within ~1.5 s of upload.
+  // Switch back to the meta-tree as soon as the session ends. `resetting` is
+  // the immediate post-session state (after consent-deny, timeout, or capture
+  // upload), so reverting here drops the user-tree the moment the user skips
+  // — the meta-tree appears in place of the lingering user-tree without
+  // waiting the 1.5 s reset window. Idle still triggers on initial connect
+  // (no tree showing yet); when entering idle from resetting it's a no-op
+  // since meta is already up.
   useEffect(() => {
-    if (lc.kind !== 'idle') return;
-    void renderMetaTree();
+    const cur = currentRenderIdRef.current ?? '';
+    if (lc.kind === 'resetting' && cur.startsWith('tree:')) {
+      void renderMetaTree();
+    } else if (lc.kind === 'idle' && !cur.startsWith('meta:')) {
+      void renderMetaTree();
+    }
   }, [lc.kind, renderMetaTree]);
 
   useEffect(() => {
