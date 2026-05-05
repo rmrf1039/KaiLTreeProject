@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import type { LifecycleIntent, LifecycleState } from '../../shared/src/types.js';
 
-const PROMPTING_TIMEOUT_MS = 30_000;
+const PROMPTING_TIMEOUT_MS = 60_000;
 const ARCHIVING_TIMEOUT_MS = 20_000;
 const GENERATING_TIMEOUT_MS = 60_000;
 const RESETTING_DURATION_MS = 1_500;

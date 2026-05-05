@@ -366,6 +366,14 @@ export function DisplayPage() {
         {lastCode ? <span className="code">{lastCode}</span> : null}
         {errMsg ? <span className="err">· {errMsg}</span> : null}
       </div>
+      {canOpenModal ? (
+        <header className="display-header" aria-live="polite">
+          <p className="display-header-line">
+            <span className="display-header-label">IDentity of</span>
+            <span className="display-header-id">#{firstTree.treeId}</span>
+          </p>
+        </header>
+      ) : null}
       {status === 'empty' ? (
         <div className="display-empty">
           <p className="display-empty-title">等待第一張照片</p>

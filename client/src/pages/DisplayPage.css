@@ -78,6 +78,57 @@
   color: #ff3b30;
 }
 
+.display-header {
+  position: absolute;
+  bottom: 144px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 0;
+  text-align: center;
+  pointer-events: none;
+  color: #0A230F;
+  font-family: 'TASA Explorer', system-ui, sans-serif;
+  font-weight: 700;
+  animation: canvasFade 600ms ease-out;
+}
+
+.display-header-line {
+  margin: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 12px;
+  white-space: nowrap;
+}
+
+.display-header-label {
+  font-size: 24px;
+  letter-spacing: 0;
+  opacity: 0.8;
+}
+
+.display-header-id {
+  font-size: 24px;
+  letter-spacing: 0;
+  font-variant-numeric: proportional-nums;
+  font-feature-settings: 'pnum';
+}
+
+@media (max-width: 640px) {
+  .display-header {
+    bottom: 96px;
+  }
+  .display-header-line {
+    gap: 8px;
+  }
+  .display-header-label {
+    font-size: 18px;
+  }
+  .display-header-id {
+    font-size: 18px;
+  }
+}
+
 .display-empty {
   position: absolute;
   inset: 0;
