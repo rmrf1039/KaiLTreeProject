@@ -7,11 +7,14 @@ import type { BuildMsg, BuildResult } from '../lsystem/worker';
 import { useWebSocket } from '../ws';
 import { useLifecycle } from '../lifecycle';
 import { TreeInfoModal } from './TreeInfoModal';
+import { useFullscreenShortcut } from '../useFullscreen';
+import loopVideoUrl from '../../assets/loop.mp4';
 import './DisplayPage.css';
 
 const ATLAS_SIZE = 2048;
 const VARIANTS_PER_SLOT = 12;
 const NUM_SLOTS = 9;
+const IDLE_VIDEO_DELAY_MS = 2 * 60 * 1000;
 
 type DisplayStatus = 'connecting' | 'idle' | 'loading' | 'building' | 'rendering' | 'meta' | 'empty' | 'error';
 
@@ -33,6 +36,11 @@ export function DisplayPage() {
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const [currentTrees, setCurrentTrees] = useState<TreeRecord[]>([]);
   const [selectedTree, setSelectedTree] = useState<TreeRecord | null>(null);
+  const [videoPlaying, setVideoPlaying] = useState(false);
+  const [idleDeadline, setIdleDeadline] = useState<number | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const audioUnlockedRef = useRef(false);
   const { connState, subscribe, send } = useWebSocket('display');
   const { state: lc } = useLifecycle(subscribe, send);
 
@@ -340,6 +348,138 @@ export function DisplayPage() {
     if (connState !== 'open') setStatus('connecting');
   }, [connState, status]);
 
+  // Safety net: if the visual `status` ends up at 'idle' while the lifecycle
+  // is also idle and we're not already showing a meta-tree, kick off the
+  // render. The primary `lc.kind` effect above only fires on lifecycle
+  // transitions, so a WS reconnect (which resets status → 'connecting' →
+  // 'idle' via the connState effect) wouldn't otherwise re-render the canvas.
+  useEffect(() => {
+    if (status !== 'idle') return;
+    if (lc.kind !== 'idle') return;
+    const cur = currentRenderIdRef.current ?? '';
+    if (cur.startsWith('meta:')) return;
+    void renderMetaTree();
+  }, [status, lc.kind, renderMetaTree]);
+
+  // First user interaction unlocks autoplay-with-sound for the rest of the
+  // session. Safari/WebKit is strict — even after a gesture, a delayed
+  // programmatic play() (e.g. 2 minutes later) won't get audio unless the
+  // video element has been "blessed" by a play() call from within a user
+  // gesture. So we do a tiny play+pause warmup here and let WebKit remember
+  // that this element is user-initiated. Chrome accepts the same trick.
+  useEffect(() => {
+    const onInteract = () => {
+      audioUnlockedRef.current = true;
+
+      const v = videoRef.current;
+      if (v) {
+        if (!v.paused) {
+          // A muted video is already running — flip sound on live.
+          v.muted = false;
+        } else {
+          // Warmup: play+pause inside the gesture so WebKit blesses the
+          // element for later programmatic playback with audio.
+          v.muted = false;
+          const p = v.play();
+          if (p) {
+            p.then(() => {
+              v.pause();
+              v.currentTime = 0;
+            }).catch(() => {
+              v.muted = true;
+            });
+          }
+        }
+      }
+      cleanup();
+    };
+    const cleanup = () => {
+      document.removeEventListener('pointerdown', onInteract);
+      document.removeEventListener('keydown', onInteract);
+      document.removeEventListener('touchstart', onInteract);
+    };
+    document.addEventListener('pointerdown', onInteract);
+    document.addEventListener('keydown', onInteract);
+    document.addEventListener('touchstart', onInteract);
+    return cleanup;
+  }, []);
+
+  // Idle screensaver: when the meta-tree (or empty-state placeholder) is on
+  // screen, count down IDLE_VIDEO_DELAY_MS, then play loop.mp4 once and
+  // restart the timer. Any other status (loading / building / rendering /
+  // error) immediately cancels the timer and fades the video back out.
+  useEffect(() => {
+    const idleVisible = status === 'meta' || status === 'empty';
+    if (!idleVisible) {
+      setIdleDeadline(null);
+      if (videoPlaying) setVideoPlaying(false);
+      return;
+    }
+    if (videoPlaying) {
+      setIdleDeadline(null);
+      return;
+    }
+    const deadline = Date.now() + IDLE_VIDEO_DELAY_MS;
+    setIdleDeadline(deadline);
+    const t = window.setTimeout(() => setVideoPlaying(true), IDLE_VIDEO_DELAY_MS);
+    return () => window.clearTimeout(t);
+  }, [status, videoPlaying]);
+
+  // Tick the visible countdown only while a deadline is pending.
+  useEffect(() => {
+    if (idleDeadline === null) return;
+    setNowMs(Date.now());
+    const id = window.setInterval(() => setNowMs(Date.now()), 250);
+    return () => window.clearInterval(id);
+  }, [idleDeadline]);
+
+  useFullscreenShortcut();
+
+  // Cmd/Ctrl+P plays the screensaver manually (suppresses print dialog).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.key.toLowerCase() !== 'p') return;
+      e.preventDefault();
+      if (!videoPlaying) setVideoPlaying(true);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [videoPlaying]);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (videoPlaying) {
+      v.currentTime = 0;
+      // Autoplay-with-sound is allowed only after the page has received a
+      // user interaction. Start muted otherwise; we'll unmute live the next
+      // time someone taps (see audioUnlockedRef effect).
+      v.muted = !audioUnlockedRef.current;
+      v.play().catch(() => {
+        v.muted = true;
+        v.play().catch(() => setVideoPlaying(false));
+      });
+      return;
+    }
+    // Wait out the fade-out before pausing so the video doesn't freeze on a
+    // mid-frame visible during the transition.
+    const t = window.setTimeout(() => {
+      v.pause();
+      v.currentTime = 0;
+    }, 700);
+    return () => window.clearTimeout(t);
+  }, [videoPlaying]);
+
+  const onVideoEnded = useCallback(() => {
+    setVideoPlaying(false);
+    // Meta-tree is normally still running on the canvas underneath, but
+    // re-render if anything cleared it during playback so the user sees the
+    // photo tree as the video fades out.
+    const cur = currentRenderIdRef.current ?? '';
+    if (!cur.startsWith('meta:')) void renderMetaTree();
+  }, [renderMetaTree]);
+
   useEffect(
     () => () => {
       sceneRef.current?.dispose();
@@ -350,6 +490,7 @@ export function DisplayPage() {
 
   const firstTree = currentTrees[0] ?? null;
   const canOpenModal = status === 'rendering' && firstTree !== null;
+  const idleRemaining = idleDeadline === null ? null : Math.max(0, Math.ceil((idleDeadline - nowMs) / 1000));
 
   return (
     <div className="display">
@@ -360,9 +501,21 @@ export function DisplayPage() {
           if (canOpenModal) setSelectedTree(firstTree);
         }}
       />
+      <video
+        ref={videoRef}
+        className={`idle-video${videoPlaying ? ' visible' : ''}`}
+        src={loopVideoUrl}
+        playsInline
+        preload="auto"
+        onEnded={onVideoEnded}
+        aria-hidden="true"
+      />
       <div className="display-overlay">
         <span className={`dot ${connState}`} />
-        <span>{status}</span>
+        <span>
+          {status}
+          {idleRemaining !== null ? ` ${idleRemaining}s` : ''}
+        </span>
         {lastCode ? <span className="code">{lastCode}</span> : null}
         {errMsg ? <span className="err">· {errMsg}</span> : null}
       </div>

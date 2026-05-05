@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { LifecycleState, TreeRecord, WSMessage } from '../../../shared/src/types';
 import { useWebSocket } from '../ws';
 import { useLifecycle } from '../lifecycle';
+import { useFullscreenShortcut } from '../useFullscreen';
 import { BackgroundField } from './BackgroundField';
 import { ConsentModal } from './ConsentModal';
 import { CaptureFlow } from '../camera/CaptureFlow';
@@ -48,6 +49,8 @@ export function InputPage() {
       inputRefs.current[0]?.focus();
     }
   }, [lc.kind]);
+
+  useFullscreenShortcut();
 
   function canSubmitCode(c: string): boolean {
     return /^\d{4}$/.test(c) && lc.kind === 'idle';
@@ -146,7 +149,11 @@ export function InputPage() {
                 className="otp-box"
                 type="text"
                 inputMode="numeric"
-                autoComplete="one-time-code"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                name={`dob-${i}`}
                 maxLength={1}
                 value={d}
                 autoFocus={i === 0}
