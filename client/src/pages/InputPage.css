@@ -1,9 +1,12 @@
 .input {
+  /* Brand primary — applied to all words, the logo's bottom rule, and the
+     input field borders. Scoped to .input so it doesn't leak elsewhere. */
+  --primary: #0A230F;
   position: relative;
   min-height: 100%;
   width: 100%;
   background: #ffffff;
-  color: #1a1a1a;
+  color: var(--primary);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -28,7 +31,7 @@
   align-items: center;
   gap: 8px;
   padding: 16px 20px;
-  color: rgba(26, 26, 26, 0.6);
+  color: var(--primary);
   font-size: 12px;
   letter-spacing: 0.02em;
 }
@@ -75,15 +78,36 @@
   padding: 64px 88px 56px;
 }
 
-.input-title {
+.input-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.input-logo {
+  display: block;
+  width: 120px;
+  height: auto;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Bottom rule sits flush against the logo image — no margin between them
+   so it reads as one mark. Width matches the logo so the line terminates
+   directly under the artwork. */
+.input-logo-rule {
+  width: 120px;
+  height: 2px;
+  background: var(--primary);
+}
+
+.input-prompt {
   margin: 0;
-  font-family: 'Zen Dots', system-ui, sans-serif;
-  font-size: 44px;
-  font-weight: 400;
-  letter-spacing: 0.04em;
-  color: #cfd3da;
+  font-size: 22px;
+  letter-spacing: 0.02em;
+  color: var(--primary);
   text-align: center;
-  text-shadow: 0 2px 24px rgba(255, 255, 255, 0.7);
 }
 
 .otp {
@@ -95,9 +119,9 @@
   width: 72px;
   height: 88px;
   border-radius: 14px;
-  border: 1.5px solid rgba(26, 26, 26, 0.22);
+  border: 1.5px solid var(--primary);
   background: rgba(255, 255, 255, 0.7);
-  color: #1a1a1a;
+  color: var(--primary);
   font-size: 44px;
   font-weight: 400;
   text-align: center;
@@ -105,7 +129,7 @@
   padding: 0;
   font-variant-numeric: tabular-nums;
   transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease, transform 80ms ease;
-  caret-color: #1a1a1a;
+  caret-color: var(--primary);
   -moz-appearance: textfield;
 }
 
@@ -116,13 +140,13 @@
 }
 
 .otp-box:hover:not(:disabled) {
-  border-color: rgba(26, 26, 26, 0.4);
+  border-color: var(--primary);
   background: rgba(255, 255, 255, 0.85);
 }
 
 .otp-box:focus {
-  border-color: #1a1a1a;
-  box-shadow: 0 0 0 4px rgba(26, 26, 26, 0.08);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(10, 35, 15, 0.12);
   background: #ffffff;
 }
 
@@ -137,7 +161,7 @@
   max-width: 420px;
   text-align: center;
   font-size: 14px;
-  color: #4a4f55;
+  color: var(--primary);
 }
 
 .input-status p {
@@ -145,7 +169,8 @@
 }
 
 .input-status .muted {
-  color: #8a8f96;
+  color: var(--primary);
+  opacity: 0.6;
 }
 
 .input-status .error {
@@ -154,14 +179,14 @@
 
 .bar {
   height: 4px;
-  background: rgba(26, 26, 26, 0.1);
+  background: rgba(10, 35, 15, 0.15);
   border-radius: 2px;
   overflow: hidden;
 }
 
 .bar-fill {
   height: 100%;
-  background: #1a1a1a;
+  background: var(--primary);
   transition: width 120ms linear;
 }
 
@@ -178,7 +203,11 @@
     height: 76px;
     font-size: 36px;
   }
-  .input-title {
-    font-size: 28px;
+  .input-logo,
+  .input-logo-rule {
+    width: 100px;
+  }
+  .input-prompt {
+    font-size: 18px;
   }
 }

@@ -5,6 +5,7 @@ import { useLifecycle } from '../lifecycle';
 import { BackgroundField } from './BackgroundField';
 import { ConsentModal } from './ConsentModal';
 import { CaptureFlow } from '../camera/CaptureFlow';
+import logoUrl from '../../assets/logo.png';
 import './InputPage.css';
 
 const SEARCH_CANDIDATES = 161;
@@ -128,7 +129,12 @@ export function InputPage() {
 
       <div className="input-center">
         <div className={`input-card ${lc.kind === 'prompting' || lc.kind === 'archiving' ? 'dimmed' : ''}`}>
-          <h1 className="input-title">IDentity</h1>
+          <div className="input-brand">
+            <img src={logoUrl} alt="IDentity" className="input-logo" />
+            <div className="input-logo-rule" aria-hidden="true" />
+          </div>
+
+          <p className="input-prompt">Enter your Date of Birth</p>
 
           <div className="otp" role="group" aria-label="4-digit code">
             {digits.map((d, i) => (
