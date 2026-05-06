@@ -209,9 +209,9 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 72px;
+  gap: 24px;
   width: 100%;
-  max-width: 1000px;
+  max-width: 720px;
   animation: treeModalRise 220ms ease-out both;
 }
 
@@ -271,39 +271,47 @@
 .tree-modal-info {
   margin: 0;
   padding: 0;
+  display: grid;
+  width: 100%;
+  justify-items: center;
+  align-items: start;
+  column-gap: 32px;
+  row-gap: 8px;
+}
+
+.tree-modal-info-top {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.tree-modal-info-bottom {
   display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: center;
-  align-items: flex-start;
-  gap: 32px 40px;
+  column-gap: 64px;
 }
 
 .tree-modal-item {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  gap: 14px;
   min-width: 0;
+  text-align: center;
 }
 
 .tree-modal-item dt {
   margin: 0;
-  font-size: 11px;
-  color: rgba(26, 26, 26, 0.55);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 13px;
+  color: rgba(26, 26, 26, 0.5);
+  letter-spacing: 0.02em;
 }
 
 .tree-modal-item dd {
   margin: 0;
-  font-size: 16px;
+  font-size: 20px;
   color: #1a1a1a;
-  word-break: break-word;
-}
-
-.tree-modal-item dd.mono {
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: 'tnum';
+  white-space: nowrap;
+  font-variant-numeric: proportional-nums;
 }
 
 @media (max-width: 640px) {
@@ -311,12 +319,18 @@
     padding: 56px 20px 32px;
   }
   .tree-modal-content {
-    gap: 48px;
+    gap: 18px;
   }
   .tree-modal-info {
-    gap: 20px 28px;
+    column-gap: 16px;
+  }
+  .tree-modal-item {
+    gap: 8px;
+  }
+  .tree-modal-item dt {
+    font-size: 12px;
   }
   .tree-modal-item dd {
-    font-size: 15px;
+    font-size: 16px;
   }
 }
