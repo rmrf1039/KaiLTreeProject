@@ -33,6 +33,18 @@ export function InputPage() {
 
   const code = digits.join('');
   const isLocked = lc.kind !== 'idle';
+  const [consentVisible, setConsentVisible] = useState(false);
+
+  // Delay the consent dialog by 6s after entering the prompting state so the
+  // user has a moment to react before the modal appears.
+  useEffect(() => {
+    if (lc.kind !== 'prompting') {
+      setConsentVisible(false);
+      return;
+    }
+    const id = window.setTimeout(() => setConsentVisible(true), 6000);
+    return () => window.clearTimeout(id);
+  }, [lc.kind, lc.kind === 'prompting' ? lc.sessionId : null]);
 
   // Listen for presence + tree-ready details (the lifecycle state is FSM stage;
   // the tree-ready event carries N-real / M-fallback counts the operator sees).
@@ -194,10 +206,8 @@ export function InputPage() {
         </div>
       </div>
 
-      {lc.kind === 'prompting' && (
+      {lc.kind === 'prompting' && consentVisible && (
         <ConsentModal
-          sessionId={lc.sessionId}
-          deadlineEpochMs={lc.deadlineEpochMs}
           onGrant={() => dispatch({ kind: 'consent:granted', sessionId: lc.sessionId })}
           onDeny={() => dispatch({ kind: 'consent:denied', sessionId: lc.sessionId })}
         />

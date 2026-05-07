@@ -45,12 +45,11 @@ class LifecycleStore {
     switch (this.state.kind) {
       case 'idle':
       case 'querying':
+      case 'prompting':
+        // Prompting waits indefinitely — only Yes/No buttons resolve it.
         return;
       case 'generating':
         ms = GENERATING_TIMEOUT_MS;
-        break;
-      case 'prompting':
-        ms = PROMPTING_TIMEOUT_MS;
         break;
       case 'archiving':
         ms = ARCHIVING_TIMEOUT_MS;

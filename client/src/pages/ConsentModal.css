@@ -19,24 +19,6 @@
   }
 }
 
-.consent-countdown {
-  position: absolute;
-  top: 32px;
-  right: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: rgba(10, 35, 15, 0.08);
-  color: var(--primary);
-  font-family: 'TASA Explorer', system-ui, sans-serif;
-  font-size: 22px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-}
-
 .consent-modal-content {
   display: flex;
   flex-direction: column;
@@ -109,13 +91,6 @@
 }
 
 @media (max-width: 640px) {
-  .consent-countdown {
-    top: 20px;
-    right: 20px;
-    width: 44px;
-    height: 44px;
-    font-size: 18px;
-  }
   .consent-title {
     font-size: 32px;
   }
