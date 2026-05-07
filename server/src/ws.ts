@@ -93,6 +93,10 @@ export function attachWebSocket(wss: WebSocketServer): void {
         if (CLIENT_DISPATCHABLE_INTENTS.has(parsed.intent.kind)) {
           lifecycle.transition(parsed.intent);
         }
+      } else if (parsed.type === 'screensaver:play') {
+        // Input-side Cmd+P fans out to displays; the display gates playback
+        // on its own visual state (meta/empty), matching its local Cmd+P.
+        broadcast(parsed, { role: 'display' });
       }
     });
 

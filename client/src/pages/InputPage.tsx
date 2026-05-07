@@ -13,6 +13,15 @@ const SEARCH_CANDIDATES = 161;
 
 type TreeDetails = { trees: TreeRecord[]; fallbackSlots: number[] } | null;
 
+// crypto.randomUUID() requires a secure context (HTTPS or localhost);
+// fall back to Math.random when accessed over plain HTTP on the LAN.
+function newIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export function InputPage() {
   const [digits, setDigits] = useState<string[]>(['', '', '', '']);
   const [presence, setPresence] = useState({ inputs: 0, displays: 0 });
@@ -52,6 +61,19 @@ export function InputPage() {
 
   useFullscreenShortcut();
 
+  // Cmd/Ctrl+P fans out to displays so the operator can trigger the screensaver
+  // from the input keypad without touching the display machine.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.key.toLowerCase() !== 'p') return;
+      e.preventDefault();
+      send({ type: 'screensaver:play' });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [send]);
+
   function canSubmitCode(c: string): boolean {
     return /^\d{4}$/.test(c) && lc.kind === 'idle';
   }
@@ -59,7 +81,7 @@ export function InputPage() {
   async function submit(c: string): Promise<void> {
     if (!canSubmitCode(c)) return;
     setSubmitError(null);
-    const idempotencyKey = crypto.randomUUID();
+    const idempotencyKey = newIdempotencyKey();
     try {
       const r = await fetch('/api/submit', {
         method: 'POST',

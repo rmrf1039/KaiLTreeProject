@@ -323,6 +323,8 @@ export function DisplayPage() {
         // in the same WS batch as a lifecycle transition.
         const cur = currentRenderIdRef.current ?? '';
         if (cur.startsWith('meta:')) void renderMetaTree();
+      } else if (msg.type === 'screensaver:play') {
+        setVideoPlaying(true);
       }
     });
   }, [subscribe, renderTreeReady, renderMetaTree]);

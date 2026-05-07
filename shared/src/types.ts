@@ -56,6 +56,7 @@ export type WSMessage =
   | { type: 'lifecycle:transition'; state: LifecycleState }
   | { type: 'lifecycle:dispatch'; intent: LifecycleIntent }
   | { type: 'meta-tree:updated' }
+  | { type: 'screensaver:play' }
   | { type: 'ping' }
   | { type: 'pong' };
 
